@@ -32,6 +32,8 @@ fi
 
 yum install -y ca-certificates curl git openssl tar
 
+cd /tmp
+
 if [ ! -x "$GO_BIN" ]; then
 	echo "Installing Go ${GO_VERSION}..."
 	rm -rf /usr/local/go
@@ -71,8 +73,8 @@ fi
 
 echo "Building agent..."
 cd "$SRC_DIR"
-runuser -u vpspanel-agent -- env GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod tidy
-runuser -u vpspanel-agent -- env GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/agent" ./cmd/agent
+runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod tidy
+runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/agent" ./cmd/agent
 
 cat > "$ENV_FILE" <<EOF
 VPSPANEL_AGENT_LISTEN=:8443

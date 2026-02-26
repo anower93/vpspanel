@@ -28,6 +28,8 @@ fi
 apt-get update -y
 apt-get install -y ca-certificates curl git openssl tar postgresql postgresql-contrib
 
+cd /tmp
+
 if [ ! -x "$GO_BIN" ]; then
 	echo "Installing Go ${GO_VERSION}..."
 	rm -rf /usr/local/go
@@ -79,9 +81,9 @@ chmod 0600 "$ENV_FILE"
 
 echo "Building panel..."
 cd "$SRC_DIR"
-runuser -u vpspanel -- env GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod tidy
-runuser -u vpspanel -- env GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panel" ./cmd/panel
-runuser -u vpspanel -- env GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panelctl" ./cmd/panelctl
+runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod tidy
+runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panel" ./cmd/panel
+runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panelctl" ./cmd/panelctl
 
 cat > /etc/systemd/system/vpspanel-panel.service <<EOF
 [Unit]
