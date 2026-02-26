@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ func (h *Handlers) Login(c *gin.Context) {
 	password := c.PostForm("password")
 
 	if h.auth.ValidateUser(username, password) {
-		h.auth.CreateSession(c.Writer, username)
+		h.auth.CreateSession(c.Writer, c.Request, username)
 		c.Redirect(http.StatusFound, "/admin/dashboard")
 		return
 	}
@@ -68,7 +69,7 @@ func (h *Handlers) Dashboard(c *gin.Context) {
 	memInfo, _ := mem.VirtualMemory()
 	diskInfo, _ := disk.Usage("/")
 	hostInfo, _ := host.Info()
-	netInfo, _ := net.NetIOCounters(false)
+	netInfo, _ := net.IOCounters(false)
 
 	uptime := time.Duration(hostInfo.Uptime) * time.Second
 
@@ -300,13 +301,21 @@ func (h *Handlers) MySQLDatabases(c *gin.Context) {
 
 func (h *Handlers) CreateDatabase(c *gin.Context) {
 	name := c.PostForm("name")
-	exec.Command("mysql", "-e", "CREATE DATABASE "+name+";").Run()
+	if !regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(name) {
+		c.String(http.StatusBadRequest, "Invalid database name")
+		return
+	}
+	exec.Command("mysql", "-e", "CREATE DATABASE `"+name+"`;").Run()
 	c.Redirect(http.StatusFound, "/admin/mysql")
 }
 
 func (h *Handlers) DropDatabase(c *gin.Context) {
 	name := c.PostForm("name")
-	exec.Command("mysql", "-e", "DROP DATABASE "+name+";").Run()
+	if !regexp.MustCompile(`^[a-zA-Z0-9_]+$`).MatchString(name) {
+		c.String(http.StatusBadRequest, "Invalid database name")
+		return
+	}
+	exec.Command("mysql", "-e", "DROP DATABASE `"+name+"`;").Run()
 	c.Redirect(http.StatusFound, "/admin/mysql")
 }
 

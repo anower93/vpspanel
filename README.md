@@ -24,38 +24,26 @@ A lightweight VPS control panel written in Go, similar to cPanel.
 
 ## Installation
 
-1. Clone and setup:
+One command (recommended):
+
 ```bash
-git clone <repo-url>
-cd vpspanel
-go mod tidy
+curl -sSL https://raw.githubusercontent.com/anower93/vpspanel/main/install.sh | sudo bash
 ```
 
-2. Edit `config/config.yaml` with your credentials:
-```yaml
-server:
-  port: "8080"
+This installs to `/opt/vpspanel`, generates `/opt/vpspanel/config/config.yaml`, builds the binary, and registers a `systemd` service.
 
-auth:
-  username: "admin"
-  password: "your-secure-password"
-  session_secret: "generate-random-secret"
-```
+Public HTTPS (optional):
 
-3. Build and run:
 ```bash
-go build -o vpspanel ./cmd
-sudo ./vpspanel
+VPSPANEL_DOMAIN=panel.example.com VPSPANEL_EMAIL=you@example.com \
+  curl -sSL https://raw.githubusercontent.com/anower93/vpspanel/main/install.sh | sudo bash
 ```
-
-4. Access at `http://your-server:8080`
 
 ## Security Notes
 
-- Change default password immediately
-- Use HTTPS in production (reverse proxy with nginx)
-- Consider adding IP whitelisting in config
-- The terminal executes commands as the running user
+- Default install runs in `safe_mode` and binds to `127.0.0.1:8080` (use SSH tunnel or enable the optional HTTPS setup).
+- For public access, use the HTTPS install option and/or set `security.allowed_ips` to your IP/CIDR.
+- Do not disable `safe_mode` unless you understand the risk (terminal/file actions/service restarts are powerful).
 
 ## Project Structure
 
@@ -64,7 +52,7 @@ vpspanel/
 ├── cmd/
 │   └── main.go          # Entry point
 ├── config/
-│   └── config.yaml      # Configuration
+│   └── config.example.yaml  # Example configuration
 ├── internal/
 │   ├── handlers/       # HTTP handlers
 │   ├── middleware/     # Auth middleware

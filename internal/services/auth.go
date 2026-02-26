@@ -1,7 +1,9 @@
 package services
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/securecookie"
@@ -36,11 +38,15 @@ func (s *AuthService) ValidateUser(username, password string) bool {
 		return false
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(s.config.Auth.Password), []byte(password))
-	return err == nil
+	stored := s.config.Auth.Password
+	if strings.HasPrefix(stored, "$2a$") || strings.HasPrefix(stored, "$2b$") || strings.HasPrefix(stored, "$2y$") {
+		return bcrypt.CompareHashAndPassword([]byte(stored), []byte(password)) == nil
+	}
+
+	return subtle.ConstantTimeCompare([]byte(stored), []byte(password)) == 1
 }
 
-func (s *AuthService) CreateSession(w http.ResponseWriter, username string) error {
+func (s *AuthService) CreateSession(w http.ResponseWriter, r *http.Request, username string) error {
 	session := &Session{
 		Username:  username,
 		CSRFToken: generateCSRFToken(),
@@ -56,13 +62,23 @@ func (s *AuthService) CreateSession(w http.ResponseWriter, username string) erro
 		return err
 	}
 
+	secure := false
+	if r != nil {
+		if r.TLS != nil {
+			secure = true
+		}
+		if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+			secure = true
+		}
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session",
 		Value:    encoded,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
 	})
 
 	return nil

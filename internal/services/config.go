@@ -26,6 +26,7 @@ type AuthConfig struct {
 type SecurityConfig struct {
 	AllowedIPs []string `yaml:"allowed_ips"`
 	Require2FA bool     `yaml:"require_2fa"`
+	SafeMode   bool     `yaml:"safe_mode"`
 }
 
 func LoadConfig(path string) (*Config, error) {
