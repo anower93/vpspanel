@@ -73,7 +73,7 @@ fi
 
 echo "Building agent..."
 cd "$SRC_DIR"
-runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod tidy
+runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod download
 runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/agent" ./cmd/agent
 
 cat > "$ENV_FILE" <<EOF

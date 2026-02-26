@@ -81,7 +81,7 @@ chmod 0600 "$ENV_FILE"
 
 echo "Building panel..."
 cd "$SRC_DIR"
-runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod tidy
+runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod download
 runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panel" ./cmd/panel
 runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panelctl" ./cmd/panelctl
 

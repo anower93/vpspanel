@@ -2,6 +2,8 @@ module vpspanel
 
 go 1.21
 
+replace github.com/rogpeppe/go-internal => github.com/rogpeppe/go-internal v1.12.0
+
 require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-chi/chi/v5 v5.0.12
