@@ -9,6 +9,9 @@ GO_TGZ="go${GO_VERSION}.linux-amd64.tar.gz"
 GO_URL="https://go.dev/dl/${GO_TGZ}"
 GO_BIN="/usr/local/go/bin/go"
 
+GOPATH_DIR="/var/lib/vpspanel-go"
+GOCACHE_DIR="/var/cache/vpspanel-go"
+
 DOMAIN="${VPSPANEL_DOMAIN:-}"
 EMAIL="${VPSPANEL_EMAIL:-}"
 
@@ -65,6 +68,9 @@ fi
 
 mkdir -p "$INSTALL_DIR/config"
 
+mkdir -p "$GOPATH_DIR" "$GOCACHE_DIR"
+chown -R vpspanel:vpspanel "$GOPATH_DIR" "$GOCACHE_DIR"
+
 GENERATED_PASSWORD=""
 if [ ! -f "$INSTALL_DIR/config/config.yaml" ]; then
 	GENERATED_PASSWORD="$(openssl rand -base64 18 | tr -d '\n')"
@@ -73,7 +79,7 @@ if [ ! -f "$INSTALL_DIR/config/config.yaml" ]; then
 	cat > "$INSTALL_DIR/config/config.yaml" <<EOF
 server:
   port: "8080"
-  host: "127.0.0.1"
+  host: "0.0.0.0"
 
 auth:
   username: "admin"
@@ -87,12 +93,15 @@ security:
 EOF
 fi
 
+# Cleanup from older broken installs where GOPATH was inside the repo.
+rm -rf "$INSTALL_DIR/go" || true
+
 chown -R vpspanel:vpspanel "$INSTALL_DIR"
 
 echo "Building..."
 cd "$INSTALL_DIR"
-as_user vpspanel "$GO_BIN" mod tidy
-as_user vpspanel "$GO_BIN" build -o "$INSTALL_DIR/vpspanel" ./cmd
+as_user vpspanel env GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod tidy
+as_user vpspanel env GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$INSTALL_DIR/vpspanel" ./cmd
 
 cat > /etc/systemd/system/vpspanel.service <<'EOF'
 [Unit]
@@ -172,12 +181,11 @@ fi
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 
 echo "========================================"
-echo "VPS Panel is running (safe mode ON, bound to 127.0.0.1:8080)"
+echo "VPS Panel is running (safe mode ON)"
 if [ -n "$DOMAIN" ]; then
 	echo "URL: https://${DOMAIN}"
 else
-	echo "Local URL: http://127.0.0.1:8080"
-	echo "SSH tunnel: ssh -L 8080:127.0.0.1:8080 root@${IP:-YOUR_SERVER_IP}"
+	echo "URL: http://${IP:-YOUR_SERVER_IP}:8080"
 fi
 echo "Username: admin"
 if [ -n "$GENERATED_PASSWORD" ]; then

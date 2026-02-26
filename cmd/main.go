@@ -70,7 +70,8 @@ func main() {
 	}
 
 	r.Static("/static", "./internal/static")
-	r.LoadHTMLGlob("./internal/templates/**/*.html")
+	// filepath.Glob does not support **; templates live in one directory.
+	r.LoadHTMLGlob("./internal/templates/*.html")
 
 	port := config.Server.Port
 	if port == "" {
