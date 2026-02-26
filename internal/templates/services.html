@@ -1,0 +1,25 @@
+{{define "content"}}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Service</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Services}}
+        <tr>
+            <td>{{.Name}}</td>
+            <td><span class="status-{{.Status}}">{{.Status}}</span></td>
+            <td>
+                <form method="POST" action="/admin/services/restart">
+                    <input type="hidden" name="name" value="{{.Name}}">
+                    <button type="submit">Restart</button>
+                </form>
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}

@@ -1,0 +1,46 @@
+{{define "content"}}
+<div class="file-manager">
+    <div class="toolbar">
+        <a href="/admin/files{{.Parent}}" class="btn">Parent Directory</a>
+        <form method="POST" action="/admin/files/upload" enctype="multipart/form-data" style="display:inline">
+            <input type="file" name="file" style="display:inline">
+            <input type="hidden" name="path" value="{{.Path}}">
+            <button type="submit">Upload</button>
+        </form>
+    </div>
+    <p>Current path: {{.Path}}</p>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Size</th>
+                <th>Modified</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Files}}
+            <tr>
+                <td>
+                    {{if .IsDir}}
+                    <a href="/admin/files{{$.Path}}{{.Name}}/">📁 {{.Name}}</a>
+                    {{else}}
+                    📄 {{.Name}}
+                    {{end}}
+                </td>
+                <td>{{if .IsDir}}Directory{{else}}File{{end}}</td>
+                <td>{{.Size}}</td>
+                <td>{{.ModTime}}</td>
+                <td>
+                    <form method="POST" action="/admin/files/delete" style="display:inline">
+                        <input type="hidden" name="path" value="{{$.Path}}{{.Name}}">
+                        <button type="submit" class="btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}

@@ -1,0 +1,19 @@
+{{define "content"}}
+<div class="service-manager">
+    <h3>Status: <span class="status-{{.Status}}">{{.Status}}</span></h3>
+    <div class="actions">
+        <form method="POST" action="/admin/mysql/restart">
+            <button type="submit" class="btn-danger">Restart</button>
+        </form>
+    </div>
+    <h4>Databases</h4>
+    <form method="POST" action="/admin/mysql/create-db" class="inline-form">
+        <input type="text" name="name" placeholder="Database name" required>
+        <button type="submit">Create Database</button>
+    </form>
+    <form method="POST" action="/admin/mysql/drop-db" class="inline-form">
+        <input type="text" name="name" placeholder="Database name" required>
+        <button type="submit" class="btn-danger">Drop Database</button>
+    </form>
+</div>
+{{end}}

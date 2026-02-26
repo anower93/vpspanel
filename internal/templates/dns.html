@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="dns-manager">
+    <h3>DNS Zones</h3>
+    <form method="POST" action="/admin/dns/create-zone" class="inline-form">
+        <input type="text" name="zone" placeholder="example.com" required>
+        <button type="submit">Create Zone</button>
+    </form>
+    <ul>
+        {{range .Zones}}
+        <li>
+            {{.}}
+            <form method="POST" action="/admin/dns/delete-zone" style="display:inline">
+                <input type="hidden" name="zone" value="{{.}}">
+                <button type="submit" class="btn-danger">Delete</button>
+            </form>
+        </li>
+        {{end}}
+    </ul>
+</div>
+{{end}}

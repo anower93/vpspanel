@@ -1,0 +1,24 @@
+{{define "content"}}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>PID</th>
+            <th>Name</th>
+            <th>Memory (MB)</th>
+            <th>CPU %</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Processes}}
+        <tr>
+            <td>{{.PID}}</td>
+            <td>{{.Name}}</td>
+            <td>{{.MemRSS}}</td>
+            <td>{{printf "%.1f" .CPU}}</td>
+            <td><a href="/admin/processes/kill/{{.PID}}" class="btn-danger">Kill</a></td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}

@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>System</h3>
+        <p>Hostname: {{.Hostname}}</p>
+        <p>OS: {{.OS}}</p>
+        <p>Platform: {{.Platform}}</p>
+        <p>Uptime: {{.Uptime}}</p>
+    </div>
+    <div class="stat-card">
+        <h3>CPU</h3>
+        <div class="progress-bar">
+            <div class="progress" style="width: {{.CPU}}%">{{printf "%.1f" .CPU}}%</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <h3>Memory</h3>
+        <div class="progress-bar">
+            <div class="progress" style="width: {{.MemUsed}}%">{{printf "%.1f" .MemUsed}}%</div>
+        </div>
+        <p>{{.MemUsedGB}} GB / {{.MemTotal}} GB</p>
+    </div>
+    <div class="stat-card">
+        <h3>Disk</h3>
+        <div class="progress-bar">
+            <div class="progress" style="width: {{.DiskUsed}}%">{{printf "%.1f" .DiskUsed}}%</div>
+        </div>
+        <p>{{.DiskUsedGB}} GB / {{.DiskTotal}} GB</p>
+    </div>
+    <div class="stat-card">
+        <h3>Network</h3>
+        <p>In: {{.NetIn}} bytes</p>
+        <p>Out: {{.NetOut}} bytes</p>
+    </div>
+</div>
+{{end}}

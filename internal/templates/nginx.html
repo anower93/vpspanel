@@ -1,0 +1,19 @@
+{{define "content"}}
+<div class="service-manager">
+    <h3>Status: <span class="status-{{.Status}}">{{.Status}}</span></h3>
+    <div class="actions">
+        <form method="POST" action="/admin/nginx/reload">
+            <button type="submit">Reload</button>
+        </form>
+        <form method="POST" action="/admin/nginx/restart">
+            <button type="submit" class="btn-danger">Restart</button>
+        </form>
+    </div>
+    <h4>Enabled Sites</h4>
+    <ul>
+        {{range .Configs}}
+        <li>{{.}}</li>
+        {{end}}
+    </ul>
+</div>
+{{end}}

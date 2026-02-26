@@ -1,0 +1,12 @@
+server:
+  port: "8080"
+  host: "0.0.0.0"
+
+auth:
+  username: "admin"
+  password: "changeme"
+  session_secret: "replace-this-with-random-secret"
+
+security:
+  allowed_ips: []
+  require_2fa: false

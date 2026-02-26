@@ -1,0 +1,34 @@
+{{define "content"}}
+<div class="info-grid">
+    <div class="info-card">
+        <h3>Host Info</h3>
+        <table>
+            <tr><td>Hostname</td><td>{{.HostInfo.Hostname}}</td></tr>
+            <tr><td>OS</td><td>{{.HostInfo.OS}}</td></tr>
+            <tr><td>Platform</td><td>{{.HostInfo.Platform}}</td></tr>
+            <tr><td>Kernel</td><td>{{.HostInfo.KernelVersion}}</td></tr>
+            <tr><td>Uptime</td><td>{{.HostInfo.Uptime}}</td></tr>
+        </table>
+    </div>
+    <div class="info-card">
+        <h3>CPU</h3>
+        <p>Cores: {{.NumCPU}}</p>
+        {{range .CPUInfo}}
+        <p>Model: {{.ModelName}}</p>
+        <p>Cores: {{.Cores}}</p>
+        {{end}}
+    </div>
+    <div class="info-card">
+        <h3>Memory</h3>
+        <p>Total: {{.MemInfo.Total | formatBytes}}</p>
+        <p>Available: {{.MemInfo.Available | formatBytes}}</p>
+        <p>Used: {{.MemInfo.Used | formatBytes}}</p>
+    </div>
+    <div class="info-card">
+        <h3>Disk</h3>
+        <p>Total: {{.DiskInfo.Total | formatBytes}}</p>
+        <p>Free: {{.DiskInfo.Free | formatBytes}}</p>
+        <p>Used: {{.DiskInfo.Used | formatBytes}}</p>
+    </div>
+</div>
+{{end}}

@@ -1,0 +1,30 @@
+{{define "content"}}
+<div class="terminal">
+    <div class="terminal-output" id="output"></div>
+    <div class="terminal-input">
+        <span>$</span>
+        <input type="text" id="cmd" placeholder="Enter command..." autofocus>
+        <button onclick="execute()">Run</button>
+    </div>
+</div>
+<script>
+async function execute() {
+    const cmd = document.getElementById('cmd').value;
+    const output = document.getElementById('output');
+    output.innerHTML += '<div>$ ' + cmd + '</div>';
+    
+    const res = await fetch('/admin/terminal/exec', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'cmd=' + encodeURIComponent(cmd)
+    });
+    const text = await res.text();
+    output.innerHTML += '<pre>' + text + '</pre>';
+    output.scrollTop = output.scrollHeight;
+    document.getElementById('cmd').value = '';
+}
+document.getElementById('cmd').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') execute();
+});
+</script>
+{{end}}
