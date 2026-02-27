@@ -53,6 +53,7 @@ func SecurityHeaders() gin.HandlerFunc {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; connect-src 'self'")
 		c.Next()
 	}
 }
