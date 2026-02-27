@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -108,4 +109,90 @@ func (ac *AgentClient) GetMetrics(ctx context.Context, host string, port int, cn
 	}
 
 	return &metrics, nil
+}
+
+type NginxSite struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	Config  string `json:"config"`
+}
+
+func (ac *AgentClient) doReq(ctx context.Context, host string, port int, method, path string, body []byte) (*http.Response, error) {
+	url := fmt.Sprintf("https://%s:%d%s", host, port, path)
+	var reader *bytes.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, reader)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := ac.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	return resp, nil
+}
+
+func (ac *AgentClient) GetNginxSites(ctx context.Context, host string, port int, cn string) ([]NginxSite, error) {
+	resp, err := ac.doReq(ctx, host, port, http.MethodGet, "/v1/nginx/sites", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var sites []NginxSite
+	if err := json.NewDecoder(resp.Body).Decode(&sites); err != nil {
+		return nil, fmt.Errorf("decode failed: %w", err)
+	}
+	return sites, nil
+}
+
+func (ac *AgentClient) SaveNginxSite(ctx context.Context, host string, port int, cn string, name, config string) error {
+	payload, _ := json.Marshal(map[string]string{"config": config})
+	resp, err := ac.doReq(ctx, host, port, http.MethodPost, "/v1/nginx/sites/"+name, payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (ac *AgentClient) ToggleNginxSite(ctx context.Context, host string, port int, cn string, name string, enable bool) error {
+	payload, _ := json.Marshal(map[string]bool{"enabled": enable})
+	resp, err := ac.doReq(ctx, host, port, http.MethodPost, "/v1/nginx/sites/"+name+"/toggle", payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (ac *AgentClient) DeleteNginxSite(ctx context.Context, host string, port int, cn string, name string) error {
+	resp, err := ac.doReq(ctx, host, port, http.MethodDelete, "/v1/nginx/sites/"+name, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (ac *AgentClient) ActionNginx(ctx context.Context, host string, port int, cn string, action string) error {
+	resp, err := ac.doReq(ctx, host, port, http.MethodPost, "/v1/nginx/"+action, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
 }

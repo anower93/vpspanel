@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -54,11 +55,14 @@ func NewApp(cfg *Config) (*App, error) {
 		return nil, err
 	}
 
+	t, _ := template.ParseGlob("internal/templates/*.html")
+
 	h := httpapi.New(httpapi.Deps{
 		DB:        sqlDB,
 		CA:        panelCA,
 		PublicURL: cfg.PublicURL,
 		CookieKey: []byte(cfg.CookieKey),
+		Templates: t,
 	})
 
 	s := &http.Server{

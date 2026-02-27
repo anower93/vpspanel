@@ -66,6 +66,12 @@ func New(d Deps) http.Handler {
 		r.Get("/", a.dashboard)
 		r.Get("/nodes", a.nodesPage)
 		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
+
+		r.Get("/nodes/{id}/nginx", a.nginxPage)
+		r.Post("/nodes/{id}/nginx/action", a.nginxAction)
+		r.Post("/nodes/{id}/nginx/save", a.nginxSave)
+		r.Post("/nodes/{id}/nginx/toggle", a.nginxToggle)
+		r.Post("/nodes/{id}/nginx/delete", a.nginxDelete)
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -239,6 +245,112 @@ func (a *API) nodeMetricsAPI(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(metrics)
+}
+
+func (a *API) getNodeOr404(w http.ResponseWriter, r *http.Request) *Node {
+	nodeID := chi.URLParam(r, "id")
+	var n Node
+	err := a.DB.QueryRowContext(r.Context(), `select id, name, agent_host, agent_port, server_cert_cn from nodes where id=$1`, nodeID).
+		Scan(&n.ID, &n.Name, &n.AgentHost, &n.AgentPort, &n.CertCN)
+	if err != nil {
+		http.Error(w, "node not found", http.StatusNotFound)
+		return nil
+	}
+	return &n
+}
+
+func (a *API) nginxPage(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil {
+		return
+	}
+
+	sites, err := a.agentClient.GetNginxSites(r.Context(), n.AgentHost, n.AgentPort, n.CertCN)
+	if err != nil {
+		http.Error(w, "failed to get nginx sites: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if a.Templates != nil {
+		a.Templates.ExecuteTemplate(w, "nginx.html", map[string]any{"Node": n, "Sites": sites})
+		return
+	}
+
+	w.Write([]byte("Nginx module loaded. (Templates not loaded)"))
+}
+
+func (a *API) nginxAction(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil {
+		return
+	}
+
+	action := r.FormValue("action")
+	if action != "reload" && action != "restart" && action != "test" {
+		http.Error(w, "invalid action", http.StatusBadRequest)
+		return
+	}
+
+	err := a.agentClient.ActionNginx(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, action)
+	if err != nil {
+		http.Error(w, "agent error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/nginx", http.StatusFound)
+}
+
+func (a *API) nginxSave(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil {
+		return
+	}
+
+	name := r.FormValue("name")
+	config := r.FormValue("config")
+	if name == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+
+	err := a.agentClient.SaveNginxSite(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name, config)
+	if err != nil {
+		http.Error(w, "agent error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/nginx", http.StatusFound)
+}
+
+func (a *API) nginxToggle(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil {
+		return
+	}
+
+	name := r.FormValue("name")
+	enabled := r.FormValue("enabled") == "true"
+
+	err := a.agentClient.ToggleNginxSite(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name, enabled)
+	if err != nil {
+		http.Error(w, "agent error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/nginx", http.StatusFound)
+}
+
+func (a *API) nginxDelete(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil {
+		return
+	}
+
+	name := r.FormValue("name")
+	err := a.agentClient.DeleteNginxSite(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name)
+	if err != nil {
+		http.Error(w, "agent error: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/nginx", http.StatusFound)
 }
 
 type agentRegisterReq struct {
