@@ -71,9 +71,8 @@ func New(d Deps) http.Handler {
 		r.Get("/", a.dashboard)
 		r.Get("/nodes", a.nodesPage)
 		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
-		r.Post("/nodes/{id}/delete", a.nodeDelete)
-
 		r.Post("/nodes/enroll", a.apiEnrollCommand)
+		r.Post("/nodes/{id}/delete", a.nodeDelete)
 
 		r.Get("/nodes/{id}/nginx", a.nginxPage)
 		r.Post("/nodes/{id}/nginx/action", a.nginxAction)
