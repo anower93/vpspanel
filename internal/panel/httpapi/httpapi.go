@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -61,11 +62,16 @@ func New(d Deps) http.Handler {
 	r.Post("/logout", a.logout)
 
 	// Dashboard routes
+	r.Get("/license", a.licensePage)
+	r.Post("/license", a.licenseSubmit)
+
 	r.Group(func(r chi.Router) {
+		r.Use(a.requireLicense)
 		r.Use(a.requireSession)
 		r.Get("/", a.dashboard)
 		r.Get("/nodes", a.nodesPage)
 		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
+		r.Post("/nodes/{id}/delete", a.nodeDelete)
 
 		r.Post("/nodes/enroll", a.apiEnrollCommand)
 
@@ -153,6 +159,89 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) dashboard(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/nodes", http.StatusFound)
+}
+
+func (a *API) requireLicense(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var key string
+		err := a.DB.QueryRowContext(r.Context(), `select value from settings where key='license_key'`).Scan(&key)
+		if err != nil || key == "" {
+			http.Redirect(w, r, "/license", http.StatusFound)
+			return
+		}
+
+		// Get the public IP of the panel server to send for verification
+		serverIP := getOutboundIP()
+
+		// Check license status
+		status, err := VerifyLicense(r.Context(), key, serverIP)
+		if err != nil || !status.Valid {
+			// Clear it so they are forced to enter a new one
+			a.DB.ExecContext(r.Context(), `delete from settings where key='license_key'`)
+			http.Redirect(w, r, "/license", http.StatusFound)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *API) licensePage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if a.Templates != nil {
+		a.Templates.ExecuteTemplate(w, "license.html", map[string]any{
+			"Error": r.URL.Query().Get("error"),
+		})
+		return
+	}
+	w.Write([]byte("License template missing"))
+}
+
+func (a *API) licenseSubmit(w http.ResponseWriter, r *http.Request) {
+	key := strings.TrimSpace(r.FormValue("license_key"))
+	if key == "" {
+		http.Redirect(w, r, "/license?error=Key+required", http.StatusFound)
+		return
+	}
+
+	serverIP := getOutboundIP()
+	status, err := VerifyLicense(r.Context(), key, serverIP)
+	if err != nil {
+		http.Redirect(w, r, "/license?error=Verification+server+error", http.StatusFound)
+		return
+	}
+
+	if !status.Valid {
+		http.Redirect(w, r, "/license?error="+status.Message, http.StatusFound)
+		return
+	}
+
+	// Save to DB
+	_, err = a.DB.ExecContext(r.Context(), `
+		insert into settings (key, value) values ('license_key', $1)
+		on conflict (key) do update set value = $1
+	`, key)
+
+	if err != nil {
+		http.Redirect(w, r, "/license?error=Database+error", http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func getOutboundIP() string {
+	// A quick way to get the server's public IP using a reliable external service.
+	// In production, you might want to cache this or use a local interface check.
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("https://api.ipify.org")
+	if err == nil {
+		defer resp.Body.Close()
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		return strings.TrimSpace(buf.String())
+	}
+	return "unknown"
 }
 
 func (a *API) requireSession(next http.Handler) http.Handler {
@@ -259,6 +348,16 @@ func (a *API) getNodeOr404(w http.ResponseWriter, r *http.Request) *Node {
 		return nil
 	}
 	return &n
+}
+
+func (a *API) nodeDelete(w http.ResponseWriter, r *http.Request) {
+	nodeID := chi.URLParam(r, "id")
+	_, err := a.DB.ExecContext(r.Context(), `delete from nodes where id=$1`, nodeID)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/nodes", http.StatusFound)
 }
 
 func (a *API) nginxPage(w http.ResponseWriter, r *http.Request) {
@@ -402,10 +501,26 @@ func (a *API) agentRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nodeID := uuid.New()
-	_, err = a.DB.ExecContext(r.Context(), `insert into nodes (id, name, agent_host, agent_port, server_cert_cn) values ($1,$2,$3,$4,$5)`, nodeID, req.Name, req.Host, req.Port, cn)
-	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
-		return
+
+	// Check if a node with this IP/Host already exists. If so, overwrite it instead of duplicating.
+	var existingID string
+	err = a.DB.QueryRowContext(r.Context(), `select id from nodes where agent_host=$1`, req.Host).Scan(&existingID)
+	if err == nil && existingID != "" {
+		// Update existing node
+		parsedID, _ := uuid.Parse(existingID)
+		nodeID = parsedID
+		_, err = a.DB.ExecContext(r.Context(), `update nodes set name=$1, agent_port=$2, server_cert_cn=$3, created_at=now() where id=$4`, req.Name, req.Port, cn, nodeID)
+		if err != nil {
+			http.Error(w, "db error during update", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// Insert new node
+		_, err = a.DB.ExecContext(r.Context(), `insert into nodes (id, name, agent_host, agent_port, server_cert_cn) values ($1,$2,$3,$4,$5)`, nodeID, req.Name, req.Host, req.Port, cn)
+		if err != nil {
+			http.Error(w, "db error during insert", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	resp := agentRegisterResp{NodeID: nodeID.String(), CertPEM: string(certPEM), CAPEM: string(a.CA.CertPEM), CertCN: cn}
