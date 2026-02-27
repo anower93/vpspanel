@@ -273,7 +273,9 @@ func (a *API) nginxPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if a.Templates != nil {
-		a.Templates.ExecuteTemplate(w, "nginx.html", map[string]any{"Node": n, "Sites": sites})
+		if err := a.Templates.ExecuteTemplate(w, "nginx.html", map[string]any{"Node": n, "Sites": sites}); err != nil {
+			log.Printf("template execution failed: %v", err)
+		}
 		return
 	}
 
