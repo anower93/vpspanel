@@ -58,7 +58,21 @@ func NewApp(cfg *Config) (*App, error) {
 	}
 
 	// Load templates from embedded filesystem
-	t, err := template.ParseFS(templates.FS, "*.html")
+	funcs := template.FuncMap{
+		"formatBytes": func(b uint64) string {
+			const unit = 1024
+			if b < unit {
+				return fmt.Sprintf("%d B", b)
+			}
+			div, exp := int64(unit), 0
+			for n := b / unit; n >= unit; n /= unit {
+				div *= unit
+				exp++
+			}
+			return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+		},
+	}
+	t, err := template.New("").Funcs(funcs).ParseFS(templates.FS, "*.html")
 	if err != nil {
 		log.Printf("Warning: failed to load embedded templates: %v", err)
 	}
