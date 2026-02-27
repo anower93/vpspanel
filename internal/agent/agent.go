@@ -24,11 +24,13 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
+	"vpspanel/internal/agent/nginx"
 )
 
 type Agent struct {
 	cfg    *Config
 	server *http.Server
+	nginx  *nginx.Manager
 }
 
 func NewAgent(cfg *Config) (*Agent, error) {
@@ -45,9 +47,23 @@ func NewAgent(cfg *Config) (*Agent, error) {
 		return nil, err
 	}
 
+	a := &Agent{
+		cfg:   cfg,
+		nginx: nginx.NewManager(),
+	}
+
 	r := chi.NewRouter()
 	r.Get("/v1/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 	r.Get("/v1/metrics", metricsHandler)
+
+	// Nginx API
+	r.Get("/v1/nginx/sites", a.handleNginxList)
+	r.Post("/v1/nginx/sites/{name}", a.handleNginxSave)
+	r.Delete("/v1/nginx/sites/{name}", a.handleNginxDelete)
+	r.Post("/v1/nginx/sites/{name}/toggle", a.handleNginxToggle)
+	r.Post("/v1/nginx/test", a.handleNginxTest)
+	r.Post("/v1/nginx/reload", a.handleNginxReload)
+	r.Post("/v1/nginx/restart", a.handleNginxRestart)
 
 	s := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -216,4 +232,77 @@ func stringsHasSuffix(s, suf string) bool {
 		return false
 	}
 	return s[len(s)-len(suf):] == suf
+}
+
+func (a *Agent) handleNginxList(w http.ResponseWriter, r *http.Request) {
+	sites, err := a.nginx.ListSites()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sites)
+}
+
+func (a *Agent) handleNginxSave(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var req struct {
+		Config string `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := a.nginx.SaveSite(name, req.Config); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleNginxDelete(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := a.nginx.DeleteSite(name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleNginxToggle(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := a.nginx.ToggleSite(name, req.Enabled); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleNginxTest(w http.ResponseWriter, r *http.Request) {
+	out, err := a.nginx.TestConfig()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"output": out, "success": err == nil})
+}
+
+func (a *Agent) handleNginxReload(w http.ResponseWriter, r *http.Request) {
+	if err := a.nginx.Reload(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleNginxRestart(w http.ResponseWriter, r *http.Request) {
+	if err := a.nginx.Restart(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
