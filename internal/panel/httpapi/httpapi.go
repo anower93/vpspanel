@@ -5,11 +5,16 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
+	"html/template"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -26,14 +31,27 @@ type Deps struct {
 	CA        *ca.CA
 	PublicURL string
 	CookieKey []byte
+	Templates *template.Template
 }
 
 type API struct {
 	Deps
+	agentClient *AgentClient
 }
 
 func New(d Deps) http.Handler {
 	a := &API{Deps: d}
+
+	// Create client cert for panel to talk to agents
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(d.CA.Key)})
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: d.CA.Cert.Raw})
+
+	ac, err := NewAgentClient(d.CA.CertPEM, certPEM, keyPEM)
+	if err != nil {
+		log.Printf("failed to init agent client: %v", err)
+	}
+	a.agentClient = ac
+
 	r := chi.NewRouter()
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -41,7 +59,14 @@ func New(d Deps) http.Handler {
 	r.Get("/login", a.loginPage)
 	r.Post("/login", a.login)
 	r.Post("/logout", a.logout)
-	r.Get("/", a.requireSession(a.dashboard))
+
+	// Dashboard routes
+	r.Group(func(r chi.Router) {
+		r.Use(a.requireSession)
+		r.Get("/", a.dashboard)
+		r.Get("/nodes", a.nodesPage)
+		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
+	})
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/agent/register", a.agentRegister)
@@ -119,13 +144,11 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) dashboard(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("<h1>VPS Panel</h1><p>Logged in.</p>"))
+	http.Redirect(w, r, "/nodes", http.StatusFound)
 }
 
-func (a *API) requireSession(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (a *API) requireSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie("vpspanel_session")
 		if err != nil {
 			http.Redirect(w, r, "/login", http.StatusFound)
@@ -147,8 +170,75 @@ func (a *API) requireSession(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-		next(w, r)
+		next.ServeHTTP(w, r)
+	})
+}
+
+type Node struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	AgentHost string    `json:"agent_host"`
+	AgentPort int       `json:"agent_port"`
+	CertCN    string    `json:"cert_cn"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (a *API) nodesPage(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.DB.QueryContext(r.Context(), `select id, name, agent_host, agent_port, server_cert_cn, created_at from nodes order by created_at desc`)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
 	}
+	defer rows.Close()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		if err := rows.Scan(&n.ID, &n.Name, &n.AgentHost, &n.AgentPort, &n.CertCN, &n.CreatedAt); err != nil {
+			continue
+		}
+		nodes = append(nodes, n)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if a.Templates != nil {
+		a.Templates.ExecuteTemplate(w, "nodes.html", map[string]any{"Nodes": nodes})
+		return
+	}
+
+	// Fallback basic UI
+	html := `<!doctype html><html><head><style>body{font-family:sans-serif;margin:40px;background:#f4f4f5}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:12px;border:1px solid #ddd;text-align:left}th{background:#f8f9fa}</style></head><body>`
+	html += `<h1>Enrolled Nodes</h1><table><tr><th>Name</th><th>Host</th><th>Joined</th><th>Actions</th></tr>`
+	for _, n := range nodes {
+		html += fmt.Sprintf(`<tr><td>%s</td><td>%s:%d</td><td>%s</td><td><a href="/nodes/%s/metrics">View Metrics</a></td></tr>`, n.Name, n.AgentHost, n.AgentPort, n.CreatedAt.Format(time.DateOnly), n.ID)
+	}
+	html += `</table><br><form method="post" action="/logout"><button>Logout</button></form></body></html>`
+	w.Write([]byte(html))
+}
+
+func (a *API) nodeMetricsAPI(w http.ResponseWriter, r *http.Request) {
+	nodeID := chi.URLParam(r, "id")
+	if a.agentClient == nil {
+		http.Error(w, "agent client not configured", http.StatusInternalServerError)
+		return
+	}
+
+	var n Node
+	err := a.DB.QueryRowContext(r.Context(), `select id, name, agent_host, agent_port, server_cert_cn from nodes where id=$1`, nodeID).
+		Scan(&n.ID, &n.Name, &n.AgentHost, &n.AgentPort, &n.CertCN)
+	if err != nil {
+		http.Error(w, "node not found", http.StatusNotFound)
+		return
+	}
+
+	metrics, err := a.agentClient.GetMetrics(r.Context(), n.AgentHost, n.AgentPort, n.CertCN)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to contact agent: %v", err), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metrics)
 }
 
 type agentRegisterReq struct {

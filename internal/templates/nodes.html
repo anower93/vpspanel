@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nodes - VPS Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+</head>
+<body class="h-full">
+<div class="min-h-full">
+    <nav class="bg-gray-800">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <span class="text-white font-bold text-xl">VPS Panel</span>
+                    </div>
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-baseline space-x-4">
+                            <a href="/nodes" class="bg-gray-900 text-white rounded-md px-3 py-2 text-sm font-medium" aria-current="page">Nodes</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-4 flex items-center md:ml-6">
+                        <form method="post" action="/logout">
+                            <button type="submit" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Logout</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <header class="bg-white shadow">
+        <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+            <h1 class="text-3xl font-bold tracking-tight text-gray-900">Enrolled Nodes</h1>
+        </div>
+    </header>
+    
+    <main>
+        <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+            <div class="bg-white shadow sm:rounded-lg">
+                <ul role="list" class="divide-y divide-gray-200">
+                    {{range .Nodes}}
+                    <li class="p-6" x-data="{ metrics: null, loading: false, open: false, error: null, load() { this.loading = true; fetch('/nodes/{{.ID}}/metrics').then(r => { if(!r.ok) throw new Error('offline'); return r.json() }).then(d => { this.metrics = d; this.loading = false }).catch(e => { this.error = e.message; this.loading = false }) } }">
+                        <div class="flex items-center justify-between">
+                            <div class="flex flex-col">
+                                <p class="text-sm font-semibold text-gray-900">{{.Name}}</p>
+                                <p class="text-sm text-gray-500">{{.AgentHost}}:{{.AgentPort}}</p>
+                            </div>
+                            <div class="flex space-x-4">
+                                <button @click="open = !open; if(open && !metrics) load()" class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+                                    <span x-text="open ? 'Hide Metrics' : 'View Metrics'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Metrics Dropdown -->
+                        <div x-show="open" x-transition class="mt-6 pt-6 border-t border-gray-100">
+                            <div x-show="loading" class="text-sm text-gray-500">Connecting to agent...</div>
+                            <div x-show="error" class="text-sm text-red-600" x-text="'Failed to connect: ' + error"></div>
+                            
+                            <div x-show="metrics" class="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                                <div class="bg-gray-50 p-4 rounded-lg">
+                                    <dt class="truncate text-sm font-medium text-gray-500">CPU Usage</dt>
+                                    <dd class="mt-1 text-2xl font-semibold tracking-tight text-gray-900" x-text="metrics ? metrics.cpu_percent.toFixed(1) + '%' : '-'"></dd>
+                                </div>
+                                <div class="bg-gray-50 p-4 rounded-lg">
+                                    <dt class="truncate text-sm font-medium text-gray-500">RAM Usage</dt>
+                                    <dd class="mt-1 text-2xl font-semibold tracking-tight text-gray-900" x-text="metrics ? metrics.mem_used_percent.toFixed(1) + '%' : '-'"></dd>
+                                </div>
+                                <div class="bg-gray-50 p-4 rounded-lg">
+                                    <dt class="truncate text-sm font-medium text-gray-500">Disk Usage</dt>
+                                    <dd class="mt-1 text-2xl font-semibold tracking-tight text-gray-900" x-text="metrics ? metrics.disk_used_percent.toFixed(1) + '%' : '-'"></dd>
+                                </div>
+                                <div class="bg-gray-50 p-4 rounded-lg">
+                                    <dt class="truncate text-sm font-medium text-gray-500">Uptime</dt>
+                                    <dd class="mt-1 text-lg font-semibold tracking-tight text-gray-900" x-text="metrics ? Math.floor(metrics.uptime_seconds / 86400) + ' days' : '-'"></dd>
+                                </div>
+                            </div>
+                            <div x-show="metrics" class="mt-4 flex justify-end">
+                                <button @click="load()" class="text-sm text-indigo-600 hover:text-indigo-900">Refresh</button>
+                            </div>
+                        </div>
+                    </li>
+                    {{else}}
+                    <li class="p-6 text-center text-gray-500 text-sm">
+                        No nodes enrolled yet. Generate an enrollment token to add a node.
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>
