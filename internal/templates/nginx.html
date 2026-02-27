@@ -1,19 +1,125 @@
-{{define "content"}}
-<div class="service-manager">
-    <h3>Status: <span class="status-{{.Status}}">{{.Status}}</span></h3>
-    <div class="actions">
-        <form method="POST" action="/admin/nginx/reload">
-            <button type="submit">Reload</button>
-        </form>
-        <form method="POST" action="/admin/nginx/restart">
-            <button type="submit" class="btn-danger">Restart</button>
-        </form>
-    </div>
-    <h4>Enabled Sites</h4>
-    <ul>
-        {{range .Configs}}
-        <li>{{.}}</li>
-        {{end}}
-    </ul>
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nginx - {{.Node.Name}} - VPS Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+</head>
+<body class="h-full">
+<div class="min-h-full">
+    <nav class="bg-gray-800">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <span class="text-white font-bold text-xl">VPS Panel</span>
+                    </div>
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-baseline space-x-4">
+                            <a href="/nodes" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Nodes</a>
+                            <span class="text-white rounded-md px-3 py-2 text-sm font-medium" aria-current="page">Nginx ({{.Node.Name}})</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-4 flex items-center md:ml-6">
+                        <form method="post" action="/logout">
+                            <button type="submit" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Logout</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <header class="bg-white shadow">
+        <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
+            <h1 class="text-3xl font-bold tracking-tight text-gray-900">Nginx Manager</h1>
+            <div class="flex space-x-2">
+                <form method="post" action="/nodes/{{.Node.ID}}/nginx/action">
+                    <input type="hidden" name="action" value="test">
+                    <button class="bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 text-sm font-medium">Test Config</button>
+                </form>
+                <form method="post" action="/nodes/{{.Node.ID}}/nginx/action">
+                    <input type="hidden" name="action" value="reload">
+                    <button class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-500 text-sm font-medium">Reload Nginx</button>
+                </form>
+                <form method="post" action="/nodes/{{.Node.ID}}/nginx/action">
+                    <input type="hidden" name="action" value="restart">
+                    <button class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-500 text-sm font-medium">Restart Nginx</button>
+                </form>
+            </div>
+        </div>
+    </header>
+    
+    <main x-data="{ editing: null }">
+        <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+            <div class="bg-white shadow sm:rounded-lg mb-6 p-6">
+                <h2 class="text-lg font-medium mb-4">Create New Site</h2>
+                <form method="post" action="/nodes/{{.Node.ID}}/nginx/save" class="space-y-4">
+                    <div>
+                        <input type="text" name="name" placeholder="example.com.conf" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                    </div>
+                    <div>
+                        <textarea name="config" rows="5" placeholder="server {&#10;    listen 80;&#10;    server_name example.com;&#10;}" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3 font-mono"></textarea>
+                    </div>
+                    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-500 text-sm font-medium">Create Site</button>
+                </form>
+            </div>
+
+            <div class="bg-white shadow sm:rounded-lg">
+                <ul role="list" class="divide-y divide-gray-200">
+                    {{range .Sites}}
+                    <li class="p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <h3 class="text-md font-semibold text-gray-900">{{.Name}}</h3>
+                                {{if .Enabled}}
+                                <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">Enabled</span>
+                                {{else}}
+                                <span class="inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10">Disabled</span>
+                                {{end}}
+                            </div>
+                            <div class="flex space-x-2">
+                                <button @click="editing = editing === '{{.Name}}' ? null : '{{.Name}}'" class="text-sm text-indigo-600 hover:text-indigo-900">Edit</button>
+                                
+                                <form method="post" action="/nodes/{{$.Node.ID}}/nginx/toggle" class="inline">
+                                    <input type="hidden" name="name" value="{{.Name}}">
+                                    <input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
+                                    <button type="submit" class="text-sm {{if .Enabled}}text-orange-600 hover:text-orange-900{{else}}text-green-600 hover:text-green-900{{end}}">
+                                        {{if .Enabled}}Disable{{else}}Enable{{end}}
+                                    </button>
+                                </form>
+                                
+                                <form method="post" action="/nodes/{{$.Node.ID}}/nginx/delete" class="inline" onsubmit="return confirm('Are you sure you want to delete {{.Name}}?')">
+                                    <input type="hidden" name="name" value="{{.Name}}">
+                                    <button type="submit" class="text-sm text-red-600 hover:text-red-900">Delete</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div x-show="editing === '{{.Name}}'" style="display: none;">
+                            <form method="post" action="/nodes/{{$.Node.ID}}/nginx/save" class="space-y-4">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <textarea name="config" rows="15" class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3 font-mono">{{.Config}}</textarea>
+                                <div class="flex justify-end space-x-2">
+                                    <button type="button" @click="editing = null" class="bg-white text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 text-sm font-medium border border-gray-300">Cancel</button>
+                                    <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-500 text-sm font-medium">Save Changes</button>
+                                </div>
+                            </form>
+                        </div>
+                    </li>
+                    {{else}}
+                    <li class="p-6 text-center text-gray-500 text-sm">
+                        No Nginx configurations found on this node.
+                    </li>
+                    {{end}}
+                </ul>
+            </div>
+        </div>
+    </main>
 </div>
-{{end}}
+</body>
+</html>
