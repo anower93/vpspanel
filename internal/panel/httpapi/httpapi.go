@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -62,36 +61,35 @@ func New(d Deps) http.Handler {
 	r.Post("/login", a.login)
 	r.Post("/logout", a.logout)
 
-	// License routes (must be logged in, but obviously not licensed yet)
-	r.Group(func(r chi.Router) {
-		r.Use(a.requireSession)
-		r.Get("/license", a.licensePage)
-		r.Post("/license", a.licenseSubmit)
-	})
-
 	// Dashboard routes
 	r.Group(func(r chi.Router) {
 		r.Use(a.requireSession)
-		// We removed a.requireLicense here so the Admin Panel is not locked.
-		// The license system will be moved to the specific Client Portal later.
 		r.Get("/", a.dashboard)
 		r.Get("/nodes", a.nodesPage)
-		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
+
+		// Enrollment
 		r.Post("/nodes/enroll", a.apiEnrollCommand)
-		r.Post("/nodes/{id}/delete", a.nodeDelete)
 
-		r.Get("/nodes/{id}/nginx", a.nginxPage)
-		r.Post("/nodes/{id}/nginx/action", a.nginxAction)
-		r.Post("/nodes/{id}/nginx/save", a.nginxSave)
-		r.Post("/nodes/{id}/nginx/toggle", a.nginxToggle)
-		r.Post("/nodes/{id}/nginx/delete", a.nginxDelete)
+		// Specific Node routes
+		r.Route("/nodes/{id}", func(r chi.Router) {
+			r.Get("/metrics", a.nodeMetricsAPI)
+			r.Post("/delete", a.nodeDelete)
 
-		r.Get("/nodes/{id}/mysql", a.mysqlPage)
-		r.Post("/nodes/{id}/mysql/databases/create", a.mysqlCreateDatabase)
-		r.Post("/nodes/{id}/mysql/databases/delete", a.mysqlDeleteDatabase)
-		r.Post("/nodes/{id}/mysql/users/create", a.mysqlCreateUser)
-		r.Post("/nodes/{id}/mysql/users/delete", a.mysqlDeleteUser)
-		r.Post("/nodes/{id}/mysql/grant", a.mysqlGrant)
+			// Nginx
+			r.Get("/nginx", a.nginxPage)
+			r.Post("/nginx/action", a.nginxAction)
+			r.Post("/nginx/save", a.nginxSave)
+			r.Post("/nginx/toggle", a.nginxToggle)
+			r.Post("/nginx/delete", a.nginxDelete)
+
+			// MySQL
+			r.Get("/mysql", a.mysqlPage)
+			r.Post("/mysql/databases/create", a.mysqlCreateDatabase)
+			r.Post("/mysql/databases/delete", a.mysqlDeleteDatabase)
+			r.Post("/mysql/users/create", a.mysqlCreateUser)
+			r.Post("/mysql/users/delete", a.mysqlDeleteUser)
+			r.Post("/mysql/grant", a.mysqlGrant)
+		})
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -164,96 +162,12 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
-	// Best-effort; remove cookie.
 	http.SetCookie(w, &http.Cookie{Name: "vpspanel_session", Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 func (a *API) dashboard(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/nodes", http.StatusFound)
-}
-
-func (a *API) requireLicense(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var key string
-		err := a.DB.QueryRowContext(r.Context(), `select value from settings where key='license_key'`).Scan(&key)
-		if err != nil || key == "" {
-			http.Redirect(w, r, "/license", http.StatusFound)
-			return
-		}
-
-		// Get the public IP of the panel server to send for verification
-		serverIP := getOutboundIP()
-
-		// Check license status
-		status, err := VerifyLicense(r.Context(), key, serverIP)
-		if err != nil || !status.Valid {
-			// Clear it so they are forced to enter a new one
-			a.DB.ExecContext(r.Context(), `delete from settings where key='license_key'`)
-			http.Redirect(w, r, "/license", http.StatusFound)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (a *API) licensePage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if a.Templates != nil {
-		a.Templates.ExecuteTemplate(w, "license.html", map[string]any{
-			"Error": r.URL.Query().Get("error"),
-		})
-		return
-	}
-	w.Write([]byte("License template missing"))
-}
-
-func (a *API) licenseSubmit(w http.ResponseWriter, r *http.Request) {
-	key := strings.TrimSpace(r.FormValue("license_key"))
-	if key == "" {
-		http.Redirect(w, r, "/license?error=Key+required", http.StatusFound)
-		return
-	}
-
-	serverIP := getOutboundIP()
-	status, err := VerifyLicense(r.Context(), key, serverIP)
-	if err != nil {
-		http.Redirect(w, r, "/license?error=Verification+server+error", http.StatusFound)
-		return
-	}
-
-	if !status.Valid {
-		http.Redirect(w, r, "/license?error="+status.Message, http.StatusFound)
-		return
-	}
-
-	// Save to DB
-	_, err = a.DB.ExecContext(r.Context(), `
-		insert into settings (key, value) values ('license_key', $1)
-		on conflict (key) do update set value = $1
-	`, key)
-
-	if err != nil {
-		http.Redirect(w, r, "/license?error=Database+error", http.StatusFound)
-		return
-	}
-
-	http.Redirect(w, r, "/", http.StatusFound)
-}
-
-func getOutboundIP() string {
-	// A quick way to get the server's public IP using a reliable external service.
-	// In production, you might want to cache this or use a local interface check.
-	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get("https://api.ipify.org")
-	if err == nil {
-		defer resp.Body.Close()
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(resp.Body)
-		return strings.TrimSpace(buf.String())
-	}
-	return "unknown"
 }
 
 func (a *API) requireSession(next http.Handler) http.Handler {
@@ -315,14 +229,7 @@ func (a *API) nodesPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fallback basic UI
-	html := `<!doctype html><html><head><style>body{font-family:sans-serif;margin:40px;background:#f4f4f5}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:12px;border:1px solid #ddd;text-align:left}th{background:#f8f9fa}</style></head><body>`
-	html += `<h1>Enrolled Nodes</h1><table><tr><th>Name</th><th>Host</th><th>Joined</th><th>Actions</th></tr>`
-	for _, n := range nodes {
-		html += fmt.Sprintf(`<tr><td>%s</td><td>%s:%d</td><td>%s</td><td><a href="/nodes/%s/metrics">View Metrics</a></td></tr>`, n.Name, n.AgentHost, n.AgentPort, n.CreatedAt.Format(time.DateOnly), n.ID)
-	}
-	html += `</table><br><form method="post" action="/logout"><button>Logout</button></form></body></html>`
-	w.Write([]byte(html))
+	w.Write([]byte("Nodes list (Templates not loaded)"))
 }
 
 func (a *API) nodeMetricsAPI(w http.ResponseWriter, r *http.Request) {
@@ -402,11 +309,6 @@ func (a *API) nginxAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := r.FormValue("action")
-	if action != "reload" && action != "restart" && action != "test" {
-		http.Error(w, "invalid action", http.StatusBadRequest)
-		return
-	}
-
 	err := a.agentClient.ActionNginx(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, action)
 	if err != nil {
 		http.Error(w, "agent error: "+err.Error(), http.StatusBadGateway)
@@ -423,11 +325,6 @@ func (a *API) nginxSave(w http.ResponseWriter, r *http.Request) {
 
 	name := r.FormValue("name")
 	config := r.FormValue("config")
-	if name == "" {
-		http.Error(w, "name required", http.StatusBadRequest)
-		return
-	}
-
 	err := a.agentClient.SaveNginxSite(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name, config)
 	if err != nil {
 		http.Error(w, "agent error: "+err.Error(), http.StatusBadGateway)
@@ -458,11 +355,6 @@ func (a *API) nginxDelete(w http.ResponseWriter, r *http.Request) {
 	if n == nil {
 		return
 	}
-	if a.agentClient == nil {
-		http.Error(w, "agent client failed to init", 500)
-		return
-	}
-
 	name := r.FormValue("name")
 	err := a.agentClient.DeleteNginxSite(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name)
 	if err != nil {
@@ -472,15 +364,9 @@ func (a *API) nginxDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/nodes/"+n.ID+"/nginx", http.StatusFound)
 }
 
-// MySQL Module Handlers
-
 func (a *API) mysqlPage(w http.ResponseWriter, r *http.Request) {
 	n := a.getNodeOr404(w, r)
 	if n == nil {
-		return
-	}
-	if a.agentClient == nil {
-		http.Error(w, "agent client failed to init", 500)
 		return
 	}
 
@@ -505,16 +391,16 @@ func (a *API) mysqlPage(w http.ResponseWriter, r *http.Request) {
 			"Error": r.URL.Query().Get("error"),
 		})
 		if err != nil {
-			fmt.Fprintf(w, "TEMPLATE ERROR: %v", err)
+			log.Printf("TEMPLATE ERROR: %v", err)
 		}
 		return
 	}
-	w.Write([]byte("Templates not loaded"))
+	w.Write([]byte("MySQL module loaded. (Templates not loaded)"))
 }
 
 func (a *API) mysqlCreateDatabase(w http.ResponseWriter, r *http.Request) {
 	n := a.getNodeOr404(w, r)
-	if n == nil || a.agentClient == nil {
+	if n == nil {
 		return
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
@@ -529,7 +415,7 @@ func (a *API) mysqlCreateDatabase(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) mysqlDeleteDatabase(w http.ResponseWriter, r *http.Request) {
 	n := a.getNodeOr404(w, r)
-	if n == nil || a.agentClient == nil {
+	if n == nil {
 		return
 	}
 	name := r.FormValue("name")
@@ -541,7 +427,7 @@ func (a *API) mysqlDeleteDatabase(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) mysqlCreateUser(w http.ResponseWriter, r *http.Request) {
 	n := a.getNodeOr404(w, r)
-	if n == nil || a.agentClient == nil {
+	if n == nil {
 		return
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
@@ -557,7 +443,7 @@ func (a *API) mysqlCreateUser(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) mysqlDeleteUser(w http.ResponseWriter, r *http.Request) {
 	n := a.getNodeOr404(w, r)
-	if n == nil || a.agentClient == nil {
+	if n == nil {
 		return
 	}
 	name := r.FormValue("name")
@@ -569,7 +455,7 @@ func (a *API) mysqlDeleteUser(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) mysqlGrant(w http.ResponseWriter, r *http.Request) {
 	n := a.getNodeOr404(w, r)
-	if n == nil || a.agentClient == nil {
+	if n == nil {
 		return
 	}
 	dbName := r.FormValue("database")
@@ -628,24 +514,20 @@ func (a *API) agentRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nodeID := uuid.New()
-
-	// Check if a node with this IP/Host already exists. If so, overwrite it instead of duplicating.
 	var existingID string
 	err = a.DB.QueryRowContext(r.Context(), `select id from nodes where agent_host=$1`, req.Host).Scan(&existingID)
 	if err == nil && existingID != "" {
-		// Update existing node
 		parsedID, _ := uuid.Parse(existingID)
 		nodeID = parsedID
 		_, err = a.DB.ExecContext(r.Context(), `update nodes set name=$1, agent_port=$2, server_cert_cn=$3, created_at=now() where id=$4`, req.Name, req.Port, cn, nodeID)
 		if err != nil {
-			http.Error(w, "db error during update", http.StatusInternalServerError)
+			http.Error(w, "db error", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		// Insert new node
 		_, err = a.DB.ExecContext(r.Context(), `insert into nodes (id, name, agent_host, agent_port, server_cert_cn) values ($1,$2,$3,$4,$5)`, nodeID, req.Name, req.Host, req.Port, cn)
 		if err != nil {
-			http.Error(w, "db error during insert", http.StatusInternalServerError)
+			http.Error(w, "db error", http.StatusInternalServerError)
 			return
 		}
 	}

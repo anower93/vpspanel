@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -27,11 +28,9 @@ func NewAgentClient(caCert []byte, clientCert []byte, clientKey []byte) (*AgentC
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      pool,
-		// We use the Node's ServerCertCN to verify the hostname
-		// ServerName: will be set per request or left out if skipping host verify and checking CN manually
-		InsecureSkipVerify: true, // We verify manually in VerifyPeerCertificate
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            pool,
+		InsecureSkipVerify: true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 			if len(rawCerts) == 0 {
 				return fmt.Errorf("no certificates provided")
@@ -98,10 +97,6 @@ func (ac *AgentClient) GetMetrics(ctx context.Context, host string, port int, cn
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
-
-	// Manual CN verification could be done here if we inspect TLS state,
-	// but the custom VerifyPeerCertificate already verified against our CA.
-	// For strict multi-tenant, we should check resp.TLS.PeerCertificates[0].Subject.CommonName == cn
 
 	var metrics NodeMetrics
 	if err := json.NewDecoder(resp.Body).Decode(&metrics); err != nil {
@@ -196,8 +191,6 @@ func (ac *AgentClient) ActionNginx(ctx context.Context, host string, port int, c
 	resp.Body.Close()
 	return nil
 }
-
-// MySQL Client Methods
 
 type MysqlDatabase struct {
 	Name string `json:"name"`
