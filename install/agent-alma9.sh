@@ -30,7 +30,23 @@ if ! need_cmd yum; then
 	exit 1
 fi
 
-yum install -y ca-certificates curl git openssl tar
+yum install -y ca-certificates curl git openssl tar nginx
+systemctl enable --now nginx
+
+mkdir -p /etc/nginx/conf.d
+chown -R vpspanel-agent:vpspanel-agent /etc/nginx/conf.d
+chmod 775 /etc/nginx/conf.d
+
+sed -i 's/listen       80 default_server;/listen       80;/g' /etc/nginx/nginx.conf || true
+sed -i 's/listen       \[::\]:80 default_server;/listen       \[::\]:80;/g' /etc/nginx/nginx.conf || true
+systemctl restart nginx || true
+
+setenforce 0 2>/dev/null || true
+sed -i 's/SELINUX=enforcing/SELINUX=permissive/g' /etc/selinux/config 2>/dev/null || true
+
+echo 'Defaults:vpspanel-agent !requiretty' > /etc/sudoers.d/vpspanel-agent
+echo 'vpspanel-agent ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers.d/vpspanel-agent
+chmod 0440 /etc/sudoers.d/vpspanel-agent
 
 cd /tmp
 
@@ -107,11 +123,7 @@ EnvironmentFile=${ENV_FILE}
 WorkingDirectory=${SRC_DIR}
 ExecStart=${BIN_PATH}
 Restart=always
-NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=${STATE_DIR}
 
 [Install]
 WantedBy=multi-user.target
@@ -122,6 +134,8 @@ systemctl enable --now vpspanel-agent
 
 if need_cmd firewall-cmd; then
 	firewall-cmd --permanent --add-port=8443/tcp || true
+	firewall-cmd --permanent --add-service=http || true
+	firewall-cmd --permanent --add-service=https || true
 	firewall-cmd --reload || true
 fi
 
