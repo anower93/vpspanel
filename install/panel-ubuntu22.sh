@@ -46,13 +46,9 @@ mkdir -p "$SRC_DIR" "$BIN_DIR" "$DATA_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirna
 chown -R vpspanel:vpspanel "$DATA_DIR" "$GOPATH_DIR" "$GOCACHE_DIR"
 
 echo "Fetching source..."
-if [ -d "$SRC_DIR/.git" ]; then
-	git -C "$SRC_DIR" fetch --depth=1 origin main
-	git -C "$SRC_DIR" reset --hard origin/main
-else
-	rm -rf "$SRC_DIR"/*
-	git clone --depth=1 "$REPO_URL" "$SRC_DIR"
-fi
+# Always re-clone to avoid git safe.directory/ownership issues.
+rm -rf "$SRC_DIR"
+git clone --depth=1 "$REPO_URL" "$SRC_DIR"
 
 echo "Setting up Postgres database..."
 DB_NAME="vpspanel"
@@ -82,8 +78,8 @@ chmod 0600 "$ENV_FILE"
 echo "Building panel..."
 cd "$SRC_DIR"
 runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod download
-runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panel" ./cmd/panel
-runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/panelctl" ./cmd/panelctl
+runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -buildvcs=false -trimpath -o "$BIN_DIR/panel" ./cmd/panel
+runuser -u vpspanel -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -buildvcs=false -trimpath -o "$BIN_DIR/panelctl" ./cmd/panelctl
 
 cat > /etc/systemd/system/vpspanel-panel.service <<EOF
 [Unit]

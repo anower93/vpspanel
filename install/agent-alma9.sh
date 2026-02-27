@@ -63,18 +63,14 @@ mkdir -p "$SRC_DIR" "$BIN_DIR" "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirn
 chown -R vpspanel-agent:vpspanel-agent "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR"
 
 echo "Fetching source..."
-if [ -d "$SRC_DIR/.git" ]; then
-	git -C "$SRC_DIR" fetch --depth=1 origin main
-	git -C "$SRC_DIR" reset --hard origin/main
-else
-	rm -rf "$SRC_DIR"/*
-	git clone --depth=1 "$REPO_URL" "$SRC_DIR"
-fi
+# Always re-clone to avoid git safe.directory/ownership issues.
+rm -rf "$SRC_DIR"
+git clone --depth=1 "$REPO_URL" "$SRC_DIR"
 
 echo "Building agent..."
 cd "$SRC_DIR"
 runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod download
-runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -o "$BIN_DIR/agent" ./cmd/agent
+runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -buildvcs=false -trimpath -o "$BIN_DIR/agent" ./cmd/agent
 
 cat > "$ENV_FILE" <<EOF
 VPSPANEL_AGENT_LISTEN=:8443
