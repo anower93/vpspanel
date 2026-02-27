@@ -59,13 +59,16 @@ if ! id -u vpspanel-agent >/dev/null 2>&1; then
 	useradd --system --home "$STATE_DIR" --shell /usr/sbin/nologin vpspanel-agent
 fi
 
-mkdir -p "$SRC_DIR" "$BIN_DIR" "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirname "$ENV_FILE")"
+mkdir -p "$BIN_DIR" "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirname "$ENV_FILE")"
 chown -R vpspanel-agent:vpspanel-agent "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR"
 
 echo "Fetching source..."
 # Always re-clone to avoid git safe.directory/ownership issues.
 rm -rf "$SRC_DIR"
 git clone --depth=1 "$REPO_URL" "$SRC_DIR"
+
+# Ensure build user can write build outputs and module files.
+chown -R vpspanel-agent:vpspanel-agent "$SRC_DIR" "$BIN_DIR"
 
 echo "Building agent..."
 cd "$SRC_DIR"

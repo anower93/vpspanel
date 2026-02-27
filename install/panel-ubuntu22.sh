@@ -42,13 +42,17 @@ if ! id -u vpspanel >/dev/null 2>&1; then
 	useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin vpspanel
 fi
 
-mkdir -p "$SRC_DIR" "$BIN_DIR" "$DATA_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirname "$ENV_FILE")"
+mkdir -p "$DATA_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirname "$ENV_FILE")"
 chown -R vpspanel:vpspanel "$DATA_DIR" "$GOPATH_DIR" "$GOCACHE_DIR"
 
 echo "Fetching source..."
 # Always re-clone to avoid git safe.directory/ownership issues.
 rm -rf "$SRC_DIR"
 git clone --depth=1 "$REPO_URL" "$SRC_DIR"
+
+# Ensure build user can write build outputs and module files.
+mkdir -p "$BIN_DIR"
+chown -R vpspanel:vpspanel "$SRC_DIR"
 
 echo "Setting up Postgres database..."
 DB_NAME="vpspanel"
