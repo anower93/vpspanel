@@ -59,11 +59,19 @@ DB_NAME="vpspanel"
 DB_USER="vpspanel"
 DB_PASS="$(openssl rand -base64 24 | tr -d '\n')"
 
-sudo -u postgres psql -tc "select 1 from pg_roles where rolname='${DB_USER}'" | grep -q 1 || \
-  sudo -u postgres psql -c "create user ${DB_USER} with password '${DB_PASS}';"
+# If the role/database already exist (common on re-runs), always reset the
+# password to match the generated one to avoid auth failures.
+if sudo -u postgres psql -tAc "select 1 from pg_roles where rolname='${DB_USER}'" | grep -q 1; then
+	sudo -u postgres psql -v ON_ERROR_STOP=1 -c "alter user ${DB_USER} with password '${DB_PASS}';"
+else
+	sudo -u postgres psql -v ON_ERROR_STOP=1 -c "create user ${DB_USER} with password '${DB_PASS}';"
+fi
 
-sudo -u postgres psql -tc "select 1 from pg_database where datname='${DB_NAME}'" | grep -q 1 || \
-  sudo -u postgres psql -c "create database ${DB_NAME} owner ${DB_USER};"
+if sudo -u postgres psql -tAc "select 1 from pg_database where datname='${DB_NAME}'" | grep -q 1; then
+	sudo -u postgres psql -v ON_ERROR_STOP=1 -c "alter database ${DB_NAME} owner to ${DB_USER};"
+else
+	sudo -u postgres psql -v ON_ERROR_STOP=1 -c "create database ${DB_NAME} owner ${DB_USER};"
+fi
 
 COOKIE_KEY="$(openssl rand -hex 32)"
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
