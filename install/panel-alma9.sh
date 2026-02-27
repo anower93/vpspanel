@@ -120,24 +120,29 @@ systemctl enable --now vpspanel-panel
 
 sleep 5
 
-BOOT_EMAIL="$(journalctl -u vpspanel-panel -n 500 --no-pager | awk -F= '/BOOTSTRAP_ADMIN_EMAIL=/{print $2}' | tail -n 1)"
-BOOT_PASS="$(journalctl -u vpspanel-panel -n 500 --no-pager | awk -F= '/BOOTSTRAP_ADMIN_PASSWORD=/{print $2}' | tail -n 1)"
+# Get bootstrap credentials from logs
+BOOT_EMAIL=$(journalctl -u vpspanel-panel -n 1000 --no-pager | grep "BOOTSTRAP_ADMIN_EMAIL=" | tail -n 1 | cut -d= -f2)
+BOOT_PASS=$(journalctl -u vpspanel-panel -n 1000 --no-pager | grep "BOOTSTRAP_ADMIN_PASSWORD=" | tail -n 1 | cut -d= -f2)
 
-ENROLL_TOKEN="$(runuser -u vpspanel -- env VPSPANEL_DATABASE_URL="$(grep '^VPSPANEL_DATABASE_URL=' "$ENV_FILE" | cut -d= -f2-)" ${BIN_DIR}/panelctl enroll-token --ttl 30m)"
+if [ -z "$BOOT_EMAIL" ] || [ -z "$BOOT_PASS" ]; then
+    # Maybe it was already bootstrapped before, try to find in older logs or just inform the user
+    echo "Notice: Could not find bootstrap credentials in recent logs. This panel might already be initialized."
+fi
 
 if need_cmd firewall-cmd; then
 	firewall-cmd --permanent --add-port=8080/tcp || true
 	firewall-cmd --reload || true
 fi
 
+echo ""
 echo "========================================"
-echo "Panel installed on AlmaLinux 9"
-echo "Panel URL: ${PUBLIC_URL}"
-echo "Admin email: ${BOOT_EMAIL:-admin@local}"
-if [ -n "$BOOT_PASS" ]; then
-	echo "Admin password: ${BOOT_PASS}"
-else
-	echo "Admin password: (check: journalctl -u vpspanel-panel -n 500 --no-pager)"
-fi
-echo "Enrollment token (30m): ${ENROLL_TOKEN}"
+echo "   VPS Panel Installation Complete!"
 echo "========================================"
+echo "Panel URL:      ${PUBLIC_URL}"
+echo "Admin Email:    ${BOOT_EMAIL:-admin@local}"
+echo "Admin Password: ${BOOT_PASS:-(Check 'journalctl -u vpspanel-panel' for password)}"
+echo "========================================"
+echo ""
+echo "To add a node (server) to this panel, log in and click 'Add Node'."
+echo "========================================"
+

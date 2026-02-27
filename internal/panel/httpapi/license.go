@@ -1,11 +1,7 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -35,32 +31,6 @@ func VerifyLicense(ctx context.Context, key string, ip string) (LicenseStatus, e
 	if key == "VPS-BANNED" {
 		return LicenseStatus{Valid: false, Status: "suspended", Message: "This license has been suspended for terms violation."}, nil
 	}
-
-	// --- REAL PRODUCTION MODE ---
-	/*
-		payload, _ := json.Marshal(map[string]string{
-			"license_key": key,
-			"server_ip":   ip,
-		})
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, LicenseVerifyURL, bytes.NewReader(payload))
-		if err != nil {
-			return LicenseStatus{}, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			return LicenseStatus{Valid: true, Status: "active", Message: "License server unreachable. Grace period active."}, nil
-		}
-		defer resp.Body.Close()
-
-		var status LicenseStatus
-		if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
-			return LicenseStatus{}, err
-		}
-		return status, nil
-	*/
 
 	return LicenseStatus{Valid: false, Status: "invalid", Message: "Invalid license key format."}, nil
 }
