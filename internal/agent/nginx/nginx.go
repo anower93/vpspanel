@@ -118,7 +118,7 @@ func (m *Manager) DeleteSite(name string) error {
 }
 
 func (m *Manager) TestConfig() (string, error) {
-	cmd := exec.Command("nginx", "-t")
+	cmd := exec.Command("sudo", "nginx", "-t")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -130,9 +130,9 @@ func (m *Manager) TestConfig() (string, error) {
 }
 
 func (m *Manager) Reload() error {
-	return exec.Command("systemctl", "reload", "nginx").Run()
+	return exec.Command("sudo", "systemctl", "reload", "nginx").Run()
 }
 
 func (m *Manager) Restart() error {
-	return exec.Command("systemctl", "restart", "nginx").Run()
+	return exec.Command("sudo", "systemctl", "restart", "nginx").Run()
 }
