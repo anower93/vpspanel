@@ -119,7 +119,7 @@ type NginxSite struct {
 
 func (ac *AgentClient) doReq(ctx context.Context, host string, port int, method, path string, body []byte) (*http.Response, error) {
 	url := fmt.Sprintf("https://%s:%d%s", host, port, path)
-	var reader *bytes.Reader
+	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
