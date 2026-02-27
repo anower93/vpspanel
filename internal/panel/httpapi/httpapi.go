@@ -67,6 +67,8 @@ func New(d Deps) http.Handler {
 		r.Get("/nodes", a.nodesPage)
 		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
 
+		r.Post("/nodes/enroll", a.apiEnrollCommand)
+
 		r.Get("/nodes/{id}/nginx", a.nginxPage)
 		r.Post("/nodes/{id}/nginx/action", a.nginxAction)
 		r.Post("/nodes/{id}/nginx/save", a.nginxSave)
@@ -440,6 +442,22 @@ func verify(key []byte, signed string) (string, error) {
 		return "", errors.New("bad mac")
 	}
 	return value, nil
+}
+
+func (a *API) apiEnrollCommand(w http.ResponseWriter, r *http.Request) {
+	tok, err := NewEnrollmentToken(r.Context(), a.DB, 24*time.Hour)
+	if err != nil {
+		http.Error(w, "failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	cmd := fmt.Sprintf(`curl -sSL https://raw.githubusercontent.com/anower93/vpspanel/main/install/agent-alma9.sh | VPSPANEL_PANEL_URL="%s" VPSPANEL_ENROLL_TOKEN="%s" bash`, a.PublicURL, tok)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"token":   tok,
+		"command": cmd,
+	})
 }
 
 func NewEnrollmentToken(ctx context.Context, db *sql.DB, ttl time.Duration) (string, error) {
