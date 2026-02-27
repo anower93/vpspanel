@@ -72,7 +72,8 @@ func New(d Deps) http.Handler {
 	// Dashboard routes
 	r.Group(func(r chi.Router) {
 		r.Use(a.requireSession)
-		r.Use(a.requireLicense)
+		// We removed a.requireLicense here so the Admin Panel is not locked.
+		// The license system will be moved to the specific Client Portal later.
 		r.Get("/", a.dashboard)
 		r.Get("/nodes", a.nodesPage)
 		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
