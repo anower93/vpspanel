@@ -57,7 +57,7 @@ chown -R vpspanel:vpspanel "$SRC_DIR"
 echo "Setting up Postgres database..."
 DB_NAME="vpspanel"
 DB_USER="vpspanel"
-DB_PASS="$(openssl rand -base64 24 | tr -d '\n')"
+DB_PASS="$(openssl rand -hex 24)"
 
 # If the role/database already exist (common on re-runs), always reset the
 # password to match the generated one to avoid auth failures.
@@ -77,10 +77,12 @@ COOKIE_KEY="$(openssl rand -hex 32)"
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 PUBLIC_URL="http://${IP:-127.0.0.1}:8080"
 
+DB_URL="host=127.0.0.1 port=5432 user=${DB_USER} password=${DB_PASS} dbname=${DB_NAME} sslmode=disable"
+
 cat > "$ENV_FILE" <<EOF
 VPSPANEL_LISTEN=:8080
 VPSPANEL_PUBLIC_URL=${PUBLIC_URL}
-VPSPANEL_DATABASE_URL=postgres://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}?sslmode=disable
+VPSPANEL_DATABASE_URL=${DB_URL}
 VPSPANEL_DATA_DIR=${DATA_DIR}
 VPSPANEL_COOKIE_KEY=${COOKIE_KEY}
 EOF
