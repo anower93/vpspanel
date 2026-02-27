@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -61,9 +62,17 @@ func New(d Deps) http.Handler {
 	r.Post("/login", a.login)
 	r.Post("/logout", a.logout)
 
+	// License routes (must be logged in, but obviously not licensed yet)
+	r.Group(func(r chi.Router) {
+		r.Use(a.requireSession)
+		r.Get("/license", a.licensePage)
+		r.Post("/license", a.licenseSubmit)
+	})
+
 	// Dashboard routes
 	r.Group(func(r chi.Router) {
 		r.Use(a.requireSession)
+		r.Use(a.requireLicense)
 		r.Get("/", a.dashboard)
 		r.Get("/nodes", a.nodesPage)
 
@@ -168,6 +177,82 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) dashboard(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/nodes", http.StatusFound)
+}
+
+func (a *API) requireLicense(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var key string
+		err := a.DB.QueryRowContext(r.Context(), `select value from settings where key='license_key'`).Scan(&key)
+		if err != nil || key == "" {
+			http.Redirect(w, r, "/license", http.StatusFound)
+			return
+		}
+
+		serverIP := getOutboundIP()
+		status, err := VerifyLicense(r.Context(), key, serverIP)
+		if err != nil || !status.Valid {
+			a.DB.ExecContext(r.Context(), `delete from settings where key='license_key'`)
+			http.Redirect(w, r, "/license", http.StatusFound)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *API) licensePage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if a.Templates != nil {
+		a.Templates.ExecuteTemplate(w, "license.html", map[string]any{
+			"Error": r.URL.Query().Get("error"),
+		})
+		return
+	}
+	w.Write([]byte("License template missing"))
+}
+
+func (a *API) licenseSubmit(w http.ResponseWriter, r *http.Request) {
+	key := strings.TrimSpace(r.FormValue("license_key"))
+	if key == "" {
+		http.Redirect(w, r, "/license?error=Key+required", http.StatusFound)
+		return
+	}
+
+	serverIP := getOutboundIP()
+	status, err := VerifyLicense(r.Context(), key, serverIP)
+	if err != nil {
+		http.Redirect(w, r, "/license?error=Verification+server+error", http.StatusFound)
+		return
+	}
+
+	if !status.Valid {
+		http.Redirect(w, r, "/license?error="+status.Message, http.StatusFound)
+		return
+	}
+
+	_, err = a.DB.ExecContext(r.Context(), `
+		insert into settings (key, value) values ('license_key', $1)
+		on conflict (key) do update set value = $1
+	`, key)
+
+	if err != nil {
+		http.Redirect(w, r, "/license?error=Database+error", http.StatusFound)
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func getOutboundIP() string {
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("https://api.ipify.org")
+	if err == nil {
+		defer resp.Body.Close()
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		return strings.TrimSpace(buf.String())
+	}
+	return "unknown"
 }
 
 func (a *API) requireSession(next http.Handler) http.Handler {
