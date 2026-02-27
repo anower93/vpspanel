@@ -49,6 +49,13 @@ var migrations = []string{
 		);
 		insert into schema_migrations (version) values (1);
 	end if; end $$;`,
+	`do $$ begin if not exists (select 1 from schema_migrations where version = 2) then
+		create table settings (
+			key text primary key,
+			value text not null
+		);
+		insert into schema_migrations (version) values (2);
+	end if; end $$;`,
 }
 
 func Migrate(ctx context.Context, db *sql.DB) error {
