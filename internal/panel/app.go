@@ -17,6 +17,7 @@ import (
 	"vpspanel/internal/panel/ca"
 	"vpspanel/internal/panel/db"
 	"vpspanel/internal/panel/httpapi"
+	"vpspanel/internal/templates"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -56,15 +57,10 @@ func NewApp(cfg *Config) (*App, error) {
 		return nil, err
 	}
 
-	// Try paths: first relative to working directory, then relative to binary
-	t, err := template.ParseGlob("internal/templates/*.html")
+	// Load templates from embedded filesystem
+	t, err := template.ParseFS(templates.FS, "*.html")
 	if err != nil {
-		ex, _ := os.Executable()
-		fallback := filepath.Join(filepath.Dir(filepath.Dir(ex)), "internal/templates/*.html")
-		t, err = template.ParseGlob(fallback)
-		if err != nil {
-			log.Printf("Warning: failed to load templates: %v", err)
-		}
+		log.Printf("Warning: failed to load embedded templates: %v", err)
 	}
 
 	h := httpapi.New(httpapi.Deps{
