@@ -103,6 +103,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+ReadWritePaths=${STATE_DIR}
 
 [Install]
 WantedBy=multi-user.target
