@@ -4,7 +4,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/anower93/vpspanel.git"
 SRC_DIR="/opt/vpspanel-agent-src"
-BIN_DIR="/opt/vpspanel-agent"
+BIN_PATH="/usr/local/bin/vpspanel-agent"
 ENV_FILE="/etc/vpspanel-agent/agent.env"
 STATE_DIR="/var/lib/vpspanel-agent"
 
@@ -59,7 +59,7 @@ if ! id -u vpspanel-agent >/dev/null 2>&1; then
 	useradd --system --home "$STATE_DIR" --shell /usr/sbin/nologin vpspanel-agent
 fi
 
-mkdir -p "$BIN_DIR" "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirname "$ENV_FILE")"
+mkdir -p "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR" "$(dirname "$ENV_FILE")"
 chown -R vpspanel-agent:vpspanel-agent "$STATE_DIR" "$GOPATH_DIR" "$GOCACHE_DIR"
 
 echo "Fetching source..."
@@ -68,12 +68,20 @@ rm -rf "$SRC_DIR"
 git clone --depth=1 "$REPO_URL" "$SRC_DIR"
 
 # Ensure build user can write build outputs and module files.
-chown -R vpspanel-agent:vpspanel-agent "$SRC_DIR" "$BIN_DIR"
+chown -R vpspanel-agent:vpspanel-agent "$SRC_DIR"
 
 echo "Building agent..."
 cd "$SRC_DIR"
+BUILD_DIR="$SRC_DIR/.build"
+mkdir -p "$BUILD_DIR"
+chown -R vpspanel-agent:vpspanel-agent "$BUILD_DIR"
 runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" mod download
-runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -buildvcs=false -trimpath -o "$BIN_DIR/agent" ./cmd/agent
+runuser -u vpspanel-agent -- env GOTOOLCHAIN=local GOPATH="$GOPATH_DIR" GOCACHE="$GOCACHE_DIR" "$GO_BIN" build -buildvcs=false -trimpath -o "$BUILD_DIR/agent" ./cmd/agent
+
+install -m 0755 "$BUILD_DIR/agent" "$BIN_PATH"
+if need_cmd restorecon; then
+	restorecon -v "$BIN_PATH" || true
+fi
 
 cat > "$ENV_FILE" <<EOF
 VPSPANEL_AGENT_LISTEN=:8443
@@ -97,7 +105,7 @@ User=vpspanel-agent
 Group=vpspanel-agent
 EnvironmentFile=${ENV_FILE}
 WorkingDirectory=${SRC_DIR}
-ExecStart=${BIN_DIR}/agent
+ExecStart=${BIN_PATH}
 Restart=always
 NoNewPrivileges=true
 PrivateTmp=true
