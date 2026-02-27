@@ -56,9 +56,15 @@ func NewApp(cfg *Config) (*App, error) {
 		return nil, err
 	}
 
+	// Try paths: first relative to working directory, then relative to binary
 	t, err := template.ParseGlob("internal/templates/*.html")
 	if err != nil {
-		log.Printf("Warning: failed to load templates: %v", err)
+		ex, _ := os.Executable()
+		fallback := filepath.Join(filepath.Dir(filepath.Dir(ex)), "internal/templates/*.html")
+		t, err = template.ParseGlob(fallback)
+		if err != nil {
+			log.Printf("Warning: failed to load templates: %v", err)
+		}
 	}
 
 	h := httpapi.New(httpapi.Deps{
