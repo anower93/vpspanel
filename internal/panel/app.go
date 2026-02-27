@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -55,7 +56,10 @@ func NewApp(cfg *Config) (*App, error) {
 		return nil, err
 	}
 
-	t, _ := template.ParseGlob("internal/templates/*.html")
+	t, err := template.ParseGlob("internal/templates/*.html")
+	if err != nil {
+		log.Printf("Warning: failed to load templates: %v", err)
+	}
 
 	h := httpapi.New(httpapi.Deps{
 		DB:        sqlDB,
