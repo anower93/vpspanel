@@ -196,3 +196,90 @@ func (ac *AgentClient) ActionNginx(ctx context.Context, host string, port int, c
 	resp.Body.Close()
 	return nil
 }
+
+// MySQL Client Methods
+
+type MysqlDatabase struct {
+	Name string `json:"name"`
+}
+
+type MysqlUser struct {
+	Name string `json:"name"`
+	Host string `json:"host"`
+}
+
+func (ac *AgentClient) GetMysqlDatabases(ctx context.Context, host string, port int, cn string) ([]MysqlDatabase, error) {
+	resp, err := ac.doReq(ctx, host, port, http.MethodGet, "/v1/mysql/databases", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var dbs []MysqlDatabase
+	if err := json.NewDecoder(resp.Body).Decode(&dbs); err != nil {
+		return nil, fmt.Errorf("decode failed: %w", err)
+	}
+	return dbs, nil
+}
+
+func (ac *AgentClient) GetMysqlUsers(ctx context.Context, host string, port int, cn string) ([]MysqlUser, error) {
+	resp, err := ac.doReq(ctx, host, port, http.MethodGet, "/v1/mysql/users", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var users []MysqlUser
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return nil, fmt.Errorf("decode failed: %w", err)
+	}
+	return users, nil
+}
+
+func (ac *AgentClient) CreateMysqlDatabase(ctx context.Context, host string, port int, cn string, name string) error {
+	payload, _ := json.Marshal(map[string]string{"name": name})
+	resp, err := ac.doReq(ctx, host, port, http.MethodPost, "/v1/mysql/databases", payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (ac *AgentClient) DeleteMysqlDatabase(ctx context.Context, host string, port int, cn string, name string) error {
+	resp, err := ac.doReq(ctx, host, port, http.MethodDelete, "/v1/mysql/databases/"+name, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (ac *AgentClient) CreateMysqlUser(ctx context.Context, host string, port int, cn string, name, password string) error {
+	payload, _ := json.Marshal(map[string]string{"name": name, "password": password})
+	resp, err := ac.doReq(ctx, host, port, http.MethodPost, "/v1/mysql/users", payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (ac *AgentClient) DeleteMysqlUser(ctx context.Context, host string, port int, cn string, name string) error {
+	resp, err := ac.doReq(ctx, host, port, http.MethodDelete, "/v1/mysql/users/"+name, nil)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (ac *AgentClient) GrantMysqlPrivileges(ctx context.Context, host string, port int, cn string, dbName, userName string) error {
+	payload, _ := json.Marshal(map[string]string{"database": dbName, "user": userName})
+	resp, err := ac.doReq(ctx, host, port, http.MethodPost, "/v1/mysql/grant", payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}

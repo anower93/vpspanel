@@ -24,6 +24,7 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
+	"vpspanel/internal/agent/mysql"
 	"vpspanel/internal/agent/nginx"
 )
 
@@ -31,6 +32,7 @@ type Agent struct {
 	cfg    *Config
 	server *http.Server
 	nginx  *nginx.Manager
+	mysql  *mysql.Manager
 }
 
 func NewAgent(cfg *Config) (*Agent, error) {
@@ -50,6 +52,7 @@ func NewAgent(cfg *Config) (*Agent, error) {
 	a := &Agent{
 		cfg:   cfg,
 		nginx: nginx.NewManager(),
+		mysql: mysql.NewManager(),
 	}
 
 	r := chi.NewRouter()
@@ -64,6 +67,15 @@ func NewAgent(cfg *Config) (*Agent, error) {
 	r.Post("/v1/nginx/test", a.handleNginxTest)
 	r.Post("/v1/nginx/reload", a.handleNginxReload)
 	r.Post("/v1/nginx/restart", a.handleNginxRestart)
+
+	// MySQL API
+	r.Get("/v1/mysql/databases", a.handleMysqlListDatabases)
+	r.Post("/v1/mysql/databases", a.handleMysqlCreateDatabase)
+	r.Delete("/v1/mysql/databases/{name}", a.handleMysqlDeleteDatabase)
+	r.Get("/v1/mysql/users", a.handleMysqlListUsers)
+	r.Post("/v1/mysql/users", a.handleMysqlCreateUser)
+	r.Delete("/v1/mysql/users/{name}", a.handleMysqlDeleteUser)
+	r.Post("/v1/mysql/grant", a.handleMysqlGrant)
 
 	s := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -301,6 +313,93 @@ func (a *Agent) handleNginxReload(w http.ResponseWriter, r *http.Request) {
 
 func (a *Agent) handleNginxRestart(w http.ResponseWriter, r *http.Request) {
 	if err := a.nginx.Restart(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// MySQL Handlers
+
+func (a *Agent) handleMysqlListDatabases(w http.ResponseWriter, r *http.Request) {
+	dbs, err := a.mysql.ListDatabases()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(dbs)
+}
+
+func (a *Agent) handleMysqlCreateDatabase(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := a.mysql.CreateDatabase(req.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleMysqlDeleteDatabase(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := a.mysql.DeleteDatabase(name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleMysqlListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := a.mysql.ListUsers()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
+}
+
+func (a *Agent) handleMysqlCreateUser(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name     string `json:"name"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := a.mysql.CreateUser(req.Name, req.Password); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleMysqlDeleteUser(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := a.mysql.DeleteUser(name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *Agent) handleMysqlGrant(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Database string `json:"database"`
+		User     string `json:"user"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := a.mysql.GrantPrivileges(req.Database, req.User); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

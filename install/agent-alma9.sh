@@ -30,8 +30,9 @@ if ! need_cmd yum; then
 	exit 1
 fi
 
-yum install -y ca-certificates curl git openssl tar nginx
+yum install -y ca-certificates curl git openssl tar nginx mariadb-server
 systemctl enable --now nginx
+systemctl enable --now mariadb
 
 mkdir -p /etc/nginx/conf.d
 chown -R vpspanel-agent:vpspanel-agent /etc/nginx/conf.d

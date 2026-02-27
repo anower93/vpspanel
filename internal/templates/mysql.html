@@ -1,19 +1,144 @@
-{{define "content"}}
-<div class="service-manager">
-    <h3>Status: <span class="status-{{.Status}}">{{.Status}}</span></h3>
-    <div class="actions">
-        <form method="POST" action="/admin/mysql/restart">
-            <button type="submit" class="btn-danger">Restart</button>
-        </form>
-    </div>
-    <h4>Databases</h4>
-    <form method="POST" action="/admin/mysql/create-db" class="inline-form">
-        <input type="text" name="name" placeholder="Database name" required>
-        <button type="submit">Create Database</button>
-    </form>
-    <form method="POST" action="/admin/mysql/drop-db" class="inline-form">
-        <input type="text" name="name" placeholder="Database name" required>
-        <button type="submit" class="btn-danger">Drop Database</button>
-    </form>
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySQL - {{.Node.Name}} - VPS Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+</head>
+<body class="h-full">
+<div class="min-h-full">
+    <nav class="bg-gray-800">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <span class="text-white font-bold text-xl">VPS Panel</span>
+                    </div>
+                    <div class="hidden md:block">
+                        <div class="ml-10 flex items-baseline space-x-4">
+                            <a href="/nodes" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Nodes</a>
+                            <a href="/nodes/{{.Node.ID}}/nginx" class="text-gray-300 hover:bg-gray-700 hover:text-white rounded-md px-3 py-2 text-sm font-medium">Nginx</a>
+                            <span class="bg-gray-900 text-white rounded-md px-3 py-2 text-sm font-medium" aria-current="page">MySQL</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <header class="bg-white shadow">
+        <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 flex justify-between items-center">
+            <h1 class="text-3xl font-bold tracking-tight text-gray-900">MySQL / MariaDB Manager</h1>
+            <span class="text-sm text-gray-500">{{.Node.Name}} ({{.Node.AgentHost}})</span>
+        </div>
+    </header>
+    
+    <main>
+        <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8 space-y-6">
+
+            {{if .Error}}
+            <div class="rounded-md bg-red-50 p-4">
+                <div class="flex">
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-red-800">{{.Error}}</h3>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Create Database -->
+                <div class="bg-white shadow sm:rounded-lg p-6">
+                    <h2 class="text-lg font-medium text-gray-900 mb-4">Create New Database</h2>
+                    <form method="post" action="/nodes/{{.Node.ID}}/mysql/databases/create" class="flex space-x-2">
+                        <input type="text" name="name" placeholder="Database Name" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-500 text-sm font-medium whitespace-nowrap">Create DB</button>
+                    </form>
+                </div>
+
+                <!-- Create User -->
+                <div class="bg-white shadow sm:rounded-lg p-6">
+                    <h2 class="text-lg font-medium text-gray-900 mb-4">Create New User</h2>
+                    <form method="post" action="/nodes/{{.Node.ID}}/mysql/users/create" class="space-y-4">
+                        <input type="text" name="name" placeholder="Username" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                        <input type="password" name="password" placeholder="Password" required class="block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-500 text-sm font-medium w-full">Create User</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Grant Access -->
+            <div class="bg-white shadow sm:rounded-lg p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Add User to Database</h2>
+                <form method="post" action="/nodes/{{.Node.ID}}/mysql/grant" class="flex items-end space-x-4">
+                    <div class="w-full">
+                        <label class="block text-sm font-medium leading-6 text-gray-900">User</label>
+                        <select name="user" required class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                            <option value="">Select User</option>
+                            {{range .Users}}
+                            <option value="{{.Name}}">{{.Name}}</option>
+                            {{end}}
+                        </select>
+                    </div>
+                    <div class="w-full">
+                        <label class="block text-sm font-medium leading-6 text-gray-900">Database</label>
+                        <select name="database" required class="mt-1 block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 px-3">
+                            <option value="">Select Database</option>
+                            {{range .DBs}}
+                            <option value="{{.Name}}">{{.Name}}</option>
+                            {{end}}
+                        </select>
+                    </div>
+                    <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-500 text-sm font-medium whitespace-nowrap mb-0.5">Grant All Privileges</button>
+                </form>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Database List -->
+                <div class="bg-white shadow sm:rounded-lg overflow-hidden">
+                    <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                        <h3 class="text-base font-semibold leading-6 text-gray-900">Databases</h3>
+                    </div>
+                    <ul role="list" class="divide-y divide-gray-200">
+                        {{range .DBs}}
+                        <li class="px-6 py-4 flex justify-between items-center">
+                            <span class="text-sm font-medium text-gray-900">{{.Name}}</span>
+                            <form method="post" action="/nodes/{{$.Node.ID}}/mysql/databases/delete" onsubmit="return confirm('Delete database {{.Name}}? This cannot be undone!')">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <button type="submit" class="text-sm text-red-600 hover:text-red-900">Drop</button>
+                            </form>
+                        </li>
+                        {{else}}
+                        <li class="px-6 py-4 text-sm text-gray-500 text-center">No databases found.</li>
+                        {{end}}
+                    </ul>
+                </div>
+
+                <!-- Users List -->
+                <div class="bg-white shadow sm:rounded-lg overflow-hidden">
+                    <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                        <h3 class="text-base font-semibold leading-6 text-gray-900">Database Users</h3>
+                    </div>
+                    <ul role="list" class="divide-y divide-gray-200">
+                        {{range .Users}}
+                        <li class="px-6 py-4 flex justify-between items-center">
+                            <span class="text-sm font-medium text-gray-900">{{.Name}}@{{.Host}}</span>
+                            <form method="post" action="/nodes/{{$.Node.ID}}/mysql/users/delete" onsubmit="return confirm('Delete user {{.Name}}?')">
+                                <input type="hidden" name="name" value="{{.Name}}">
+                                <button type="submit" class="text-sm text-red-600 hover:text-red-900">Delete</button>
+                            </form>
+                        </li>
+                        {{else}}
+                        <li class="px-6 py-4 text-sm text-gray-500 text-center">No users found.</li>
+                        {{end}}
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+    </main>
 </div>
-{{end}}
+</body>
+</html>

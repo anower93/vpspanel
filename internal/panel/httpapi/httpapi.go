@@ -57,17 +57,22 @@ func New(d Deps) http.Handler {
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 
+	// Pre-dashboard routes
 	r.Get("/login", a.loginPage)
 	r.Post("/login", a.login)
 	r.Post("/logout", a.logout)
 
-	// Dashboard routes
-	r.Get("/license", a.licensePage)
-	r.Post("/license", a.licenseSubmit)
-
+	// License routes (must be logged in, but obviously not licensed yet)
 	r.Group(func(r chi.Router) {
-		r.Use(a.requireLicense)
 		r.Use(a.requireSession)
+		r.Get("/license", a.licensePage)
+		r.Post("/license", a.licenseSubmit)
+	})
+
+	// Dashboard routes
+	r.Group(func(r chi.Router) {
+		r.Use(a.requireSession)
+		r.Use(a.requireLicense)
 		r.Get("/", a.dashboard)
 		r.Get("/nodes", a.nodesPage)
 		r.Get("/nodes/{id}/metrics", a.nodeMetricsAPI)
@@ -79,6 +84,13 @@ func New(d Deps) http.Handler {
 		r.Post("/nodes/{id}/nginx/save", a.nginxSave)
 		r.Post("/nodes/{id}/nginx/toggle", a.nginxToggle)
 		r.Post("/nodes/{id}/nginx/delete", a.nginxDelete)
+
+		r.Get("/nodes/{id}/mysql", a.mysqlPage)
+		r.Post("/nodes/{id}/mysql/databases/create", a.mysqlCreateDatabase)
+		r.Post("/nodes/{id}/mysql/databases/delete", a.mysqlDeleteDatabase)
+		r.Post("/nodes/{id}/mysql/users/create", a.mysqlCreateUser)
+		r.Post("/nodes/{id}/mysql/users/delete", a.mysqlDeleteUser)
+		r.Post("/nodes/{id}/mysql/grant", a.mysqlGrant)
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -445,6 +457,10 @@ func (a *API) nginxDelete(w http.ResponseWriter, r *http.Request) {
 	if n == nil {
 		return
 	}
+	if a.agentClient == nil {
+		http.Error(w, "agent client failed to init", 500)
+		return
+	}
 
 	name := r.FormValue("name")
 	err := a.agentClient.DeleteNginxSite(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name)
@@ -453,6 +469,117 @@ func (a *API) nginxDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/nodes/"+n.ID+"/nginx", http.StatusFound)
+}
+
+// MySQL Module Handlers
+
+func (a *API) mysqlPage(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil {
+		return
+	}
+	if a.agentClient == nil {
+		http.Error(w, "agent client failed to init", 500)
+		return
+	}
+
+	dbs, err := a.agentClient.GetMysqlDatabases(r.Context(), n.AgentHost, n.AgentPort, n.CertCN)
+	if err != nil {
+		http.Error(w, "failed to get databases: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	users, err := a.agentClient.GetMysqlUsers(r.Context(), n.AgentHost, n.AgentPort, n.CertCN)
+	if err != nil {
+		http.Error(w, "failed to get users: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if a.Templates != nil {
+		err := a.Templates.ExecuteTemplate(w, "mysql.html", map[string]any{
+			"Node":  n,
+			"DBs":   dbs,
+			"Users": users,
+			"Error": r.URL.Query().Get("error"),
+		})
+		if err != nil {
+			fmt.Fprintf(w, "TEMPLATE ERROR: %v", err)
+		}
+		return
+	}
+	w.Write([]byte("Templates not loaded"))
+}
+
+func (a *API) mysqlCreateDatabase(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil || a.agentClient == nil {
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name != "" {
+		if err := a.agentClient.CreateMysqlDatabase(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name); err != nil {
+			http.Redirect(w, r, "/nodes/"+n.ID+"/mysql?error=failed+to+create+db", http.StatusFound)
+			return
+		}
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/mysql", http.StatusFound)
+}
+
+func (a *API) mysqlDeleteDatabase(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil || a.agentClient == nil {
+		return
+	}
+	name := r.FormValue("name")
+	if name != "" {
+		a.agentClient.DeleteMysqlDatabase(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name)
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/mysql", http.StatusFound)
+}
+
+func (a *API) mysqlCreateUser(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil || a.agentClient == nil {
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	password := r.FormValue("password")
+	if name != "" && password != "" {
+		if err := a.agentClient.CreateMysqlUser(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name, password); err != nil {
+			http.Redirect(w, r, "/nodes/"+n.ID+"/mysql?error=failed+to+create+user", http.StatusFound)
+			return
+		}
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/mysql", http.StatusFound)
+}
+
+func (a *API) mysqlDeleteUser(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil || a.agentClient == nil {
+		return
+	}
+	name := r.FormValue("name")
+	if name != "" {
+		a.agentClient.DeleteMysqlUser(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, name)
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/mysql", http.StatusFound)
+}
+
+func (a *API) mysqlGrant(w http.ResponseWriter, r *http.Request) {
+	n := a.getNodeOr404(w, r)
+	if n == nil || a.agentClient == nil {
+		return
+	}
+	dbName := r.FormValue("database")
+	userName := r.FormValue("user")
+	if dbName != "" && userName != "" {
+		if err := a.agentClient.GrantMysqlPrivileges(r.Context(), n.AgentHost, n.AgentPort, n.CertCN, dbName, userName); err != nil {
+			http.Redirect(w, r, "/nodes/"+n.ID+"/mysql?error=failed+to+grant+privileges", http.StatusFound)
+			return
+		}
+	}
+	http.Redirect(w, r, "/nodes/"+n.ID+"/mysql", http.StatusFound)
 }
 
 type agentRegisterReq struct {
